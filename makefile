@@ -21,7 +21,7 @@ TS_LIB := ./lib/libtree-sitter.a
 YAP_CFLAGS := $(shell yap --cflags)
 
 # ts_yap flags
-YAP_TS_FLAGS := $(YAP_CFLAGS) -L./lib/ -I./include -I./tree-sitter/lib/include -ltree-sitter $(CFLAGS) -rdynamic
+YAP_TS_FLAGS := $(YAP_CFLAGS) -L./lib/ -I./include -I./tree-sitter/lib/include -ltree-sitter -lyap $(CFLAGS) -rdynamic
 YAP_TS_LIB := ./yap_ts.so
 
 .ONESHELL:
@@ -36,6 +36,7 @@ yap_ts:
 	@echo $(PURPLE)Generating yap-ts module$(RESET)
 	@echo $(CYAN)"log: $(log)"$(RESET)
 	@echo $(CYAN)Buildig objects$(RESET)
+	@echo $(CC) -fPIC $(YAP_TS_FLAGS) src/*.c -c $(CFLAGS)
 	@$(CC) -fPIC $(YAP_TS_FLAGS) src/*.c -c $(CFLAGS)
 	@echo $(CYAN)Buildig dynamic lib$(RESET)
 	@$(CC) -shared -o $(YAP_TS_LIB) ./*.o -L./lib -ltree-sitter $(CFLAGS)
