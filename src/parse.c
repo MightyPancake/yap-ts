@@ -2,11 +2,11 @@
 
 yap_state* yap_parse(yap_args args){
     yap_parser* parser = yap_new_parser();
-    if (darr_empty(args.source_paths)){
+    if (darr_empty(args.extra)){
         printf("No sources!\n");
         exit(1);
     }
-    yap_parser_parse_file(parser, darr_first(char*, args.source_paths));
+    yap_parser_parse_file(parser, darr_first(char*, args.extra));
     yap_parser_print_tree(parser);
     yap_state* ret = parser->state;
     yap_free_parser(parser);

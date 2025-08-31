@@ -21,7 +21,7 @@ TS_LIB := ./lib/libtree-sitter.a
 YAP_CFLAGS := $(shell yap --cflags)
 
 # ts_yap flags
-YAP_TS_FLAGS := $(YAP_CFLAGS) -L./lib/ -I./include -I./tree-sitter/lib/include -Wall -ltree-sitter $(CFLAGS) -rdynamic
+YAP_TS_FLAGS := $(YAP_CFLAGS) -L./lib/ -I./include -I./tree-sitter/lib/include -ltree-sitter $(CFLAGS) -rdynamic
 YAP_TS_LIB := ./yap_ts.so
 
 .ONESHELL:

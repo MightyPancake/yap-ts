@@ -17,6 +17,7 @@ void yap_parser_parse(yap_parser* ps);
 void yap_parse_source_file(yap_source* src, TSNode node);
 
 //Misc
+size_t yap_read_file_to_string(const char *path, char **out);
 TSNode yap_parser_root(yap_parser* ps);
 void yap_parser_parse_file(yap_parser* ps, char* src_path);
 void yap_parser_print_tree(yap_parser* ps);
