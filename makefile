@@ -9,7 +9,8 @@ RM := rm -fr
 CP := cp -r
 MV := mv
 
-log ?= false
+debug ?= false
+log := $(debug)
 ifeq ($(log),true)
     CFLAGS += -DYAP_LOG
 endif
