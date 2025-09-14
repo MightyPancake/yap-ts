@@ -37,10 +37,10 @@ yap_ts:
 	@echo $(PURPLE)Generating yap-ts module$(RESET)
 	@echo $(CYAN)"log: $(log)"$(RESET)
 	@echo $(CYAN)Buildig objects$(RESET)
-	@echo $(CC) -fPIC $(YAP_TS_FLAGS) src/*.c $(TS_LIB_SRC) -c $(CFLAGS)
-	@$(CC) -fPIC $(YAP_TS_FLAGS) src/*.c $(TS_LIB_SRC) -c $(CFLAGS)
+	@echo $(CC) -fPIC $(YAP_TS_FLAGS) src/*.c -c $(CFLAGS)
+	@$(CC) -fPIC $(YAP_TS_FLAGS) src/*.c -c $(CFLAGS)
 	@echo $(CYAN)Buildig dynamic lib$(RESET)
-	@$(CC) -shared -o $(YAP_TS_LIB) ./*.o $(CFLAGS)
+	@$(CC) -shared -o $(YAP_TS_LIB) ./*.o ./lib/libtree-sitter.a $(CFLAGS)
 	@rm ./*.o
 	@echo $(GREEN)Done!$(RESET)
 
@@ -54,12 +54,12 @@ grammar:
 
 # $(CC) -shared -o libtree-sitter.so ./lib/ts.o
 
-# tree-sitter:
-# 	@echo $(CYAN)Building tree-sitter lib...$(RESET)
-# 	@$(CC) -fPIC -c $(TS_LIB_SRC)/*.c -I$(TS_LIB_SRC) -I$(TS_LIB_SRC)/../include
-# 	@ar rcs ./lib/libtree-sitter.a *.o
-# 	@rm ./*.o
-# 	@echo $(GREEN)Done!$(RESET)
+tree-sitter:
+	@echo $(CYAN)Building tree-sitter lib...$(RESET)
+	@$(CC) -fPIC -c $(TS_LIB_SRC)/*.c -I$(TS_LIB_SRC) -I$(TS_LIB_SRC)/../include
+	@ar rcs ./lib/libtree-sitter.a *.o
+	@rm ./*.o
+	@echo $(GREEN)Done!$(RESET)
 
 test:
 	tree-sitter parse ./test/test.yap
