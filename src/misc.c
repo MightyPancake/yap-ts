@@ -5,7 +5,7 @@
 void yap_print_tree(TSNode node, int depth){
     for(int i=0;i<depth;i++) printf("  ");
     const char* str = ts_node_type(node);
-    printf("%s\n", str);
+    printf("%s\n", ts_node_is_error(node) ? "ERROR NODE" : str);
     for_ts_children(node, n){
         yap_print_tree(n, depth+1);
     }

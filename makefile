@@ -27,7 +27,7 @@ YAP_TS_LIB := ./yap_ts.so
 
 .ONESHELL:
 
-.PHONY: tree-sitter grammar yap_ts default clean utils
+.PHONY: tree-sitter grammar yap_ts default clean test
 
 default: all
 
@@ -60,6 +60,9 @@ tree-sitter:
 	@ar rcs ./lib/libtree-sitter.a *.o
 	@rm ./*.o
 	@echo $(GREEN)Done!$(RESET)
+
+test:
+	tree-sitter parse ./test/test.yap
 
 clean:
 	@$(RM) $(TS_LIB) $(YAP_TS_LIB)
