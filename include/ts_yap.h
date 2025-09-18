@@ -7,6 +7,7 @@
 #define YAP_LOG_MSG_COLOR aesc_white
 
 #include "yap/all.h"
+#include "log.h"
 #include "types.h"
 #include "tree_sitter/api.h"
 #include "parser.h"
