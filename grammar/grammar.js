@@ -27,81 +27,65 @@ module.exports = grammar({
   ],
   //Rules (aka the meat)
   rules: {
+    //comments
+    //def single_line_comment
+    single_line_comment: $ => token(seq('//', /.*/)),
+    //def multi_line_comment
+    multi_line_comment: $ => token(seq('/*', /[^*]*\*+([^/*][^*]*\*+)*\//)),
     //def source_file
     source_file: $ => repeat($._definition),
-    //def definition
-    definition: $ => $._definition,
     //def _defintion
     _definition: $ => choice(
       $.function_definition
     ),
     //def function definition
     function_definition: $ => seq(
-      "fn",
-      field("ret_type", optional($.type)),
+      field("fn", "fn"),
       field("name", $.identifier),
       "(",
-      field("args", $.variable_list),
       ")",
       field("body", $.block)
     ),
-    //def variable
-    variable: $ => seq(
-      field("type", $.type),
-      field("name", $.identifier),
-    ),
-    //def variable_list
-    variable_list: $ => choice(
-      '*',
-      seq($.variable, repeat(seq(",", $.variable)))
-    ),
     //def scope
-    block: $ => seq('{', repeat($.statement), '}'),
-    //def single_line_comment
-    single_line_comment: $ => token(seq('//', /.*/)),
-    multi_line_comment: $ => token(seq('/*', /[^*]*\*+([^/*][^*]*\*+)*\//)),
+    block: $ => seq(
+      field("opening_bracket", '{'),
+      repeat($.statement),
+      field("opening_bracket", '}'),
+    ),
     //def _statement
     statement: $ => choice(
       $.expr_statement,
-      $.empty_statement,
       $.block,
-      $.return_statement,
-      $.if_statement
     ),
-    if_statement: $ => seq("if", $.expr, $.statement),
-    if_else_statement: $ => seq("if", $.expr, $.statement, "else", $.statement),
-    return_statement: $ => seq("ret", $.expr, ";"),
     //def binary_expression
     binary_expression: $ => choice(
       // add/sub
-      prec.left(PREC.ADD, seq($.expr, '+', $.expr)),
-      prec.left(PREC.SUB, seq($.expr, '-', $.expr)),
-      // mul/div/mod
-      prec.left(PREC.MUL, seq($.expr, '*', $.expr)),
-      prec.left(PREC.DIV, seq($.expr, '/', $.expr)),
-      prec.left(PREC.MOD, seq($.expr, '%', $.expr)),
-      //assigns
-      prec.left(PREC.ASSIGN, seq($.expr, '=', $.expr)),
-      prec.left(PREC.ASSIGN, seq($.expr, '+=', $.expr)),
-      prec.left(PREC.ASSIGN, seq($.expr, '-=', $.expr)),
-      prec.left(PREC.ASSIGN, seq($.expr, '*=', $.expr)),
-      prec.left(PREC.ASSIGN, seq($.expr, '/=', $.expr)),
-      prec.left(PREC.ASSIGN, seq($.expr, '%=', $.expr))
+      prec.left(PREC.MUL, seq(
+        field("left", $.expr),
+        $.binary_operator,
+        field("right", $.expr)
+      )),
+      $._assignment
     ),
-    //def expr_list
-    expr_list: $ => seq($.expr, repeat(seq(",", $.expr))),
-    //def call
-    call: $ => seq($.expr, "(", optional($.expr_list), ")"),
-    //def type
-    type: $ => choice(
-      field("primitive", $.identifier),
-      seq("@", $.type),
-      seq("[]", $.type)
+    //_assignment
+    _assignment: $ => prec.right(PREC.ASSIGN, seq(
+      $.lvalue,
+      '=',
+      field("right", $.literal))),
+    binary_operator: $ => choice(
+      field("addition", "+"),
+      field("substraction", "-"),
+    ),
+    //def lvalue
+    lvalue: $ => choice(
+      $.identifier
     ),
     //def expr_statement
-    expr_statement: $ => seq($.expr, ";"),
+    expr_statement: $ => prec.right(seq(
+      field("expression", $.expr),
+      field("semicolon", ";")
+    )),
     //def empty_statement
-    empty_statement: $ => ";",
     literal: $ => choice(
       $.num_literal
     ),
@@ -110,11 +94,7 @@ module.exports = grammar({
       $.literal,
       $.identifier,
       $.binary_expression,
-      $.call,
-      $.field_access
     ),
-    //def field_access
-    field_access: $ => seq($.expr, ".", $.identifier),
     //def number
     num_literal: $ => /\d+/,
     //def identifier

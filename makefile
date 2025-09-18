@@ -62,7 +62,14 @@ tree-sitter:
 	@echo $(GREEN)Done!$(RESET)
 
 test:
-	tree-sitter parse ./test/test.yap
+	@make grammar
+	@make yap_ts debug=true
+	@make copy
+	@cd $(shell yap --modules)/.. && make test
+
 
 clean:
 	@$(RM) $(TS_LIB) $(YAP_TS_LIB)
+
+copy:
+	$(CP) $(YAP_TS_LIB) $(shell yap -m)/yap-ts/yap_ts.so
