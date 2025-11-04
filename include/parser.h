@@ -1,6 +1,8 @@
 #ifndef YAP_PARSER_H
 #define YAP_PARSER_H
 
+#include "ts_yap.h"
+
 //Basic
 yap_parser* yap_new_parser();
 void yap_free_parser(yap_parser* ps);
@@ -14,7 +16,6 @@ yap_source* yap_parser_top_source(yap_parser* ps);
 
 //Parsing
 void yap_parser_parse(yap_parser* ps);
-void yap_parse_source_file(yap_source* src, TSNode node);
 
 //Misc
 size_t yap_read_file_to_string(const char *path, char **out);
