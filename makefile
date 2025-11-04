@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -Wall -g
+CFLAGS := -Wall
 CYAN := [96m
 PURPLE := [94m
 GREEN := [92m
@@ -9,7 +9,13 @@ RM := rm -fr
 CP := cp -r
 MV := mv
 
+YAP_PATH := $(shell pwd)
+
 debug ?= false
+ifeq ($(debug),true)
+    CFLAGS += -g -O0 -fno-omit-frame-pointer
+endif
+
 log := $(debug)
 ifeq ($(log),true)
     CFLAGS += -DYAP_LOG
@@ -22,8 +28,8 @@ TS_LIB := ./lib/libtree-sitter.a
 YAP_CFLAGS := $(shell yap --cflags)
 
 # ts_yap flags
-YAP_TS_FLAGS := $(YAP_CFLAGS) -L./lib/ -I./include -I./tree-sitter/lib/include -lyap $(CFLAGS) -rdynamic
-YAP_TS_LIB := ./yap_ts.so
+YAP_TS_FLAGS := $(YAP_CFLAGS) -L./lib/ -I./include -I./tree-sitter/lib/include -lyap $(CFLAGS)
+YAP_TS_LIB := ./libyap_ts.so
 
 .ONESHELL:
 
@@ -31,17 +37,18 @@ YAP_TS_LIB := ./yap_ts.so
 
 default: all
 
-all: tree-sitter grammar yap_ts
+all: lib/libtree-sitter.a grammar yap_ts
 
 yap_ts:
 	@echo $(PURPLE)Generating yap-ts module$(RESET)
 	@echo $(CYAN)"log: $(log)"$(RESET)
 	@echo $(CYAN)Buildig objects$(RESET)
 	@echo $(CC) -fPIC $(YAP_TS_FLAGS) src/*.c -c $(CFLAGS)
-	@$(CC) -fPIC $(YAP_TS_FLAGS) src/*.c -c $(CFLAGS)
+	$(CC) -fPIC $(YAP_TS_FLAGS) src/*.c -c $(CFLAGS)
 	@echo $(CYAN)Buildig dynamic lib$(RESET)
-	@$(CC) -shared -o $(YAP_TS_LIB) ./*.o ./lib/libtree-sitter.a $(CFLAGS)
-	@rm ./*.o
+	@echo $(CC) -shared -o $(YAP_TS_LIB) ./*.o ./lib/libtree-sitter.a -Wl,-rpath,$(YAP_PATH)/lib $(CFLAGS)
+	$(CC) -shared -o $(YAP_TS_LIB) ./*.o ./lib/libtree-sitter.a -Wl,-rpath,$(YAP_PATH)/lib $(CFLAGS)
+	rm ./*.o
 	@echo $(GREEN)Done!$(RESET)
 
 grammar:
@@ -52,24 +59,26 @@ grammar:
 	$(RM) Cargo.toml binding.gyp bindings package.json src
 	@echo $(GREEN)Done!$(RESET)
 
-# $(CC) -shared -o libtree-sitter.so ./lib/ts.o
 
-tree-sitter:
+# tree-sitter:
+lib/libtree-sitter.a:
 	@echo $(CYAN)Building tree-sitter lib...$(RESET)
-	@$(CC) -fPIC -c $(TS_LIB_SRC)/*.c -I$(TS_LIB_SRC) -I$(TS_LIB_SRC)/../include
-	@ar rcs ./lib/libtree-sitter.a *.o
-	@rm ./*.o
+	@echo $(CC) -fPIC -c $(TS_LIB_SRC)/*.c -I$(TS_LIB_SRC) -I$(TS_LIB_SRC)/../include $(CFLAGS)
+	$(CC) -fPIC -c $(TS_LIB_SRC)/*.c -I$(TS_LIB_SRC) -I$(TS_LIB_SRC)/../include $(CFLAGS)
+	@echo ar rcs ./lib/libtree-sitter.a *.o
+	ar rcs ./lib/libtree-sitter.a *.o
+	rm ./*.o
 	@echo $(GREEN)Done!$(RESET)
 
 test:
-	@make grammar
-	@make yap_ts debug=true
+	@make debug=true
 	@make copy
-	@cd $(shell yap --modules)/.. && make test
+	@cd $(shell yap --modules).. && make test
 
 
 clean:
-	@$(RM) $(TS_LIB) $(YAP_TS_LIB)
+	$(RM) $(TS_LIB) $(YAP_TS_LIB)
 
 copy:
-	$(CP) $(YAP_TS_LIB) $(shell yap -m)/yap-ts/yap_ts.so
+	rsync -a --exclude='.git' ./ $(shell yap -m)/yap-ts/
+

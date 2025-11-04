@@ -1,0 +1,92 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-fPIC",
+      "-I/home/mightypancake/yap/include/",
+      "-I./include",
+      "-I./tree-sitter/lib/include",
+      "-Wall",
+      "-c",
+      "-Wall",
+      "src/error.c"
+    ],
+    "directory": "/home/mightypancake/yap-ts",
+    "file": "/home/mightypancake/yap-ts/src/error.c"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-fPIC",
+      "-I/home/mightypancake/yap/include/",
+      "-I./include",
+      "-I./tree-sitter/lib/include",
+      "-Wall",
+      "-c",
+      "-Wall",
+      "src/log.c"
+    ],
+    "directory": "/home/mightypancake/yap-ts",
+    "file": "/home/mightypancake/yap-ts/src/log.c"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-fPIC",
+      "-I/home/mightypancake/yap/include/",
+      "-I./include",
+      "-I./tree-sitter/lib/include",
+      "-Wall",
+      "-c",
+      "-Wall",
+      "src/misc.c"
+    ],
+    "directory": "/home/mightypancake/yap-ts",
+    "file": "/home/mightypancake/yap-ts/src/misc.c"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-fPIC",
+      "-I/home/mightypancake/yap/include/",
+      "-I./include",
+      "-I./tree-sitter/lib/include",
+      "-Wall",
+      "-c",
+      "-Wall",
+      "src/parse.c"
+    ],
+    "directory": "/home/mightypancake/yap-ts",
+    "file": "/home/mightypancake/yap-ts/src/parse.c"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-fPIC",
+      "-I/home/mightypancake/yap/include/",
+      "-I./include",
+      "-I./tree-sitter/lib/include",
+      "-Wall",
+      "-c",
+      "-Wall",
+      "src/parser.c"
+    ],
+    "directory": "/home/mightypancake/yap-ts",
+    "file": "/home/mightypancake/yap-ts/src/parser.c"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-fPIC",
+      "-I/home/mightypancake/yap/include/",
+      "-I./include",
+      "-I./tree-sitter/lib/include",
+      "-Wall",
+      "-c",
+      "-Wall",
+      "src/tree_sitter_yap.c"
+    ],
+    "directory": "/home/mightypancake/yap-ts",
+    "file": "/home/mightypancake/yap-ts/src/tree_sitter_yap.c"
+  }
+]

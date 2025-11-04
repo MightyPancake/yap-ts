@@ -22,18 +22,16 @@ module.exports = grammar({
   //Things to ignore
   extras: $ => [
     /\s+/,
-    $.single_line_comment,
-    $.multi_line_comment
+    token(/\/\/[^\r\n]*(\n|\r)/),
+    token(seq('/*', /[^*]*\*+([^/*][^*]*\*+)*\//)),
   ],
   //Rules (aka the meat)
   rules: {
+    //def source_file
+    source: $ => repeat($._definition),
     //comments
     //def single_line_comment
-    single_line_comment: $ => token(seq('//', /.*/)),
     //def multi_line_comment
-    multi_line_comment: $ => token(seq('/*', /[^*]*\*+([^/*][^*]*\*+)*\//)),
-    //def source_file
-    source_file: $ => repeat($._definition),
     //def _defintion
     _definition: $ => choice(
       $.function_definition
@@ -50,39 +48,42 @@ module.exports = grammar({
     block: $ => seq(
       field("opening_bracket", '{'),
       repeat($.statement),
-      field("opening_bracket", '}'),
+      field("closing_bracket", '}'),
     ),
     //def _statement
     statement: $ => choice(
       $.expr_statement,
       $.block,
     ),
-    //def binary_expression
-    binary_expression: $ => choice(
+    //def bin_op
+    bin_op: $ => choice(
       // add/sub
-      prec.left(PREC.MUL, seq(
+      prec.left(PREC.ADD, seq(
         field("left", $.expr),
-        $.binary_operator,
+        field("operator", $.binary_operator),
         field("right", $.expr)
       )),
-      $._assignment
     ),
     //_assignment
-    _assignment: $ => prec.right(PREC.ASSIGN, seq(
-      $.lvalue,
-      '=',
-      field("right", $.literal))),
+    assignment: $ => prec.right(PREC.ASSIGN, seq(
+      field("lvalue", $.lvalue),
+      field("assign", '='),
+      field("expr", $.expr))
+    ),
     binary_operator: $ => choice(
-      field("addition", "+"),
-      field("substraction", "-"),
+      field("add", "+"),
+      field("sub", "-"),
+      field("mul", "*"),
+      field("div", "/"),
+      field("mod", "%"),
     ),
     //def lvalue
     lvalue: $ => choice(
-      $.identifier
+      field("var", $.identifier)
     ),
     //def expr_statement
     expr_statement: $ => prec.right(seq(
-      field("expression", $.expr),
+      field("expr", $.expr),
       field("semicolon", ";")
     )),
     //def empty_statement
@@ -93,7 +94,8 @@ module.exports = grammar({
     expr: $ => choice(
       $.literal,
       $.identifier,
-      $.binary_expression,
+      $.bin_op,
+      $.assignment
     ),
     //def number
     num_literal: $ => /\d+/,
