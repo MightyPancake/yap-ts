@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -Wall
+CFLAGS := -Wall -O1
 CYAN := [96m
 PURPLE := [94m
 GREEN := [92m
@@ -13,7 +13,8 @@ YAP_PATH := $(shell pwd)
 
 debug ?= false
 ifeq ($(debug),true)
-    CFLAGS += -g -O0 -fno-omit-frame-pointer
+	# -O?
+    CFLAGS += -g -fno-omit-frame-pointer
 endif
 
 log := $(debug)
@@ -33,7 +34,7 @@ YAP_TS_LIB := ./libyap_ts.so
 
 .ONESHELL:
 
-.PHONY: tree-sitter grammar yap_ts default clean test
+.PHONY: ready_ts tree-sitter grammar yap_ts default clean test
 
 default: all
 
@@ -53,15 +54,21 @@ yap_ts:
 
 grammar:
 	@echo $(PURPLE)Generating grammar$(RESET)
-	@cd grammar
-	tree-sitter generate
+	cd grammar && tree-sitter generate
 	$(MV) ./src/parser.c ../src/tree_sitter_yap.c
 	$(RM) Cargo.toml binding.gyp bindings package.json src
 	@echo $(GREEN)Done!$(RESET)
 
 
-# tree-sitter:
-lib/libtree-sitter.a:
+ready_ts:
+	@echo $(CYAN)Updating subrepos...$(RESET)
+	git submodule update --init --recursive --remote
+	@echo $(CYAN)Copying headers...$(RESET)
+	cp -fr ./tree-sitter/lib/src/*.h ./include/tree_sitter/
+	
+
+tree-sitter:
+# lib/libtree-sitter.a:
 	@echo $(CYAN)Building tree-sitter lib...$(RESET)
 	@echo $(CC) -fPIC -c $(TS_LIB_SRC)/*.c -I$(TS_LIB_SRC) -I$(TS_LIB_SRC)/../include $(CFLAGS)
 	$(CC) -fPIC -c $(TS_LIB_SRC)/*.c -I$(TS_LIB_SRC) -I$(TS_LIB_SRC)/../include $(CFLAGS)

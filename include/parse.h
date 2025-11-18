@@ -1,7 +1,7 @@
 #ifndef YAP_PARSE_H
 #define YAP_PARSE_H
 
-#include <yap/all.h>
+#include <ts_yap.h>
 
 yap_state* yap_parse(yap_args args);
 yap_source_code yap_parse_source_file(yap_source* src, TSNode node);

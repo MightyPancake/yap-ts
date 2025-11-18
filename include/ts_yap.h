@@ -6,6 +6,9 @@
 #define YAP_LOG_TAG_COLOR aesc_magenta
 #define YAP_LOG_MSG_COLOR aesc_white
 
+#include "tree_sitter/api.h"
+const TSLanguage *tree_sitter_yap(void);
+
 #include "yap/all.h"
 //TS related
 #include "tree_sitter/api.h"
