@@ -1,4 +1,5 @@
-CC := gcc
+# CC := gcc
+CC := clang
 CFLAGS := -Wall -O1
 CYAN := [96m
 PURPLE := [94m
@@ -38,7 +39,7 @@ YAP_TS_LIB := ./libyap_ts.so
 
 default: all
 
-all: lib/libtree-sitter.a grammar yap_ts
+all: ./lib/libtree-sitter.a grammar yap_ts
 
 yap_ts:
 	@echo $(PURPLE)Generating yap-ts module$(RESET)
@@ -65,10 +66,9 @@ ready_ts:
 	git submodule update --init --recursive --remote
 	@echo $(CYAN)Copying headers...$(RESET)
 	cp -fr ./tree-sitter/lib/src/*.h ./include/tree_sitter/
-	
 
-tree-sitter:
-# lib/libtree-sitter.a:
+# tree-sitter:
+lib/libtree-sitter.a:
 	@echo $(CYAN)Building tree-sitter lib...$(RESET)
 	@echo $(CC) -fPIC -c $(TS_LIB_SRC)/*.c -I$(TS_LIB_SRC) -I$(TS_LIB_SRC)/../include $(CFLAGS)
 	$(CC) -fPIC -c $(TS_LIB_SRC)/*.c -I$(TS_LIB_SRC) -I$(TS_LIB_SRC)/../include $(CFLAGS)
@@ -82,10 +82,10 @@ test:
 	@make copy
 	@cd $(shell yap --modules).. && make test
 
-
 clean:
 	$(RM) $(TS_LIB) $(YAP_TS_LIB)
 
 copy:
 	rsync -a --exclude='.git' ./ $(shell yap -m)/yap-ts/
+	cp ./test/test.yap $(shell yap -m)../examples/
 
