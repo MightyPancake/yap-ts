@@ -2,7 +2,7 @@
 #define TS_YAP_TYPES_H
 
 typedef struct yap_parser{
-  yap_state* state;
+  yap_ctx* ctx;
   //
   darr source_stack;
   //
