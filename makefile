@@ -1,5 +1,5 @@
-# CC := gcc
-CC := clang
+CC := gcc
+# CC := clang
 CFLAGS := -Wall -O1
 CYAN := [96m
 PURPLE := [94m
