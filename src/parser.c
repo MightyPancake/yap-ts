@@ -82,7 +82,8 @@ void yap_parser_open_file(yap_parser* ps, char* path){
         .parent = NULL,
         .path=strus_copy(path),
         .sz=size,
-        .content=content
+        .content=content,
+        .ctx=ps->ctx
     }));
 }
 
