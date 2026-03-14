@@ -8,11 +8,14 @@ yap_source_code yap_parse_source_file(yap_source* src, TSNode node);
 yap_def yap_parse_decl(yap_source* src, TSNode node);
 yap_def yap_parse_fn_def(yap_source* src, TSNode node);
 yap_block yap_parse_block(yap_source* src, TSNode node);
+yap_assignment yap_parse_assignment(yap_source* src, TSNode node);
+//statement
 yap_statement yap_parse_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_expr_statement(yap_source* src, TSNode node);
+//expr
 yap_expr yap_parse_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_literal(yap_source* src, TSNode node);
 yap_expr yap_parse_bin_expr(yap_source* src, TSNode node);
-yap_assignment yap_parse_assignment(yap_source* src, TSNode node);
+yap_expr yap_parse_var_access(yap_source* src, TSNode node);
 
 #endif //YAP_PARSE_H

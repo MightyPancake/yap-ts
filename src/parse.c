@@ -5,12 +5,24 @@
 #include "ts_yap.h"
 #include "utils/utils.h"
 
+static void yap_push_parse_error(yap_source* src, TSNode node, const char* msg){
+    yap_log("%s [type=%s%s]", msg, ts_node_type(node), ts_node_has_error(node) ? ", has_error" : "");
+    yap_ctx_push_error(src->ctx, yap_node_error(src, node, (char*)msg));
+}
+
+static void yap_log_node(yap_source* src, const char* prefix, TSNode node){
+    char* node_val = yap_node_get_val(src, node);
+    yap_log("%s type='%s' value='%s'%s", prefix, ts_node_type(node), node_val, ts_node_has_error(node) ? ", has error" : "");
+    free(node_val);
+}
+
 yap_ctx* yap_parse(yap_args args){
     yap_parser* parser = yap_new_parser();
     if (darr_empty(args.extra)){
-        printf("No sources!\n");
+        printf("No source file provided\n");
         exit(1);
     }
+    yap_log("Parsing entry file '%s'", darr_first(char*, args.extra));
     yap_parser_parse_file(parser, darr_first(char*, args.extra));
     yap_ctx* ret = parser->ctx;
     yap_free_parser(parser);
@@ -18,14 +30,21 @@ yap_ctx* yap_parse(yap_args args){
 }
 
 yap_source_code yap_parse_source_file(yap_source* src, TSNode node){
-    const char* typ = ts_node_type(node);
     darr defs = darr_new(yap_def, 64);
+    if (ts_node_error_or_null(node)){
+        yap_push_parse_error(src, node, "Expected source file root");
+        return (yap_source_code){
+            .definitions=defs
+        };
+    }
+    const char* typ = ts_node_type(node);
+    yap_log("Parsing source root of type '%s'", typ);
     if (strus_eq(typ, "source")){
-     for_ts_children(node, n){
-         darr_push(yap_def, defs, yap_parse_decl(src, n));
-     }
+        for_ts_named_children(node, n){
+            darr_push(yap_def, defs, yap_parse_decl(src, n));
+        }
     }else{
-        yap_log("Error! Not valid source");
+        yap_push_parse_error(src, node, "Expected source file root");
     }
     return (yap_source_code){
         .definitions=defs
@@ -33,21 +52,22 @@ yap_source_code yap_parse_source_file(yap_source* src, TSNode node){
 }
 
 yap_def yap_parse_decl(yap_source *src, TSNode node){
+    yap_node_guard(node, yap_def, "Invalid declaration", src);
     const char* typ = ts_node_type(node);
     yap_log("Parsing declaration: %s", typ);
     strus_switch(typ, "function_declaration"){
         return yap_parse_fn_def(src, node);
-    }strus_case(typ, "ERROR"){
-        return yap_error_result(yap_def, "Invalid declaration");
     }else{
+        yap_log_node(src, "Unhandled declaration", node);
+        yap_push_parse_error(src, node, "Unhandled declaration");
         return yap_error_result(yap_def, "Unhandled declaration");
     }
 }
 
 yap_def yap_parse_fn_def(yap_source *src, TSNode node){
-    // TSNode name_node = ts_node_child_by_field_name(node, "name", strlen("name"));
-    TSNode name_node = yap_node_get_field(node, "name");
-    TSNode body_node = ts_node_child_by_field_name(node, "body", strlen("body"));
+    yap_node_guard(node, yap_def, "Invalid function declaration", src);
+    yap_node_field_by_name_var_check_push(node, name, yap_def, "Missing function name", src);
+    yap_node_field_by_name_var_check_push(node, body, yap_def, "Missing function body", src);
     yap_node_val(body_node);
 
     yap_node_val(name_node);
@@ -75,26 +95,19 @@ yap_def yap_parse_fn_def(yap_source *src, TSNode node){
 }
 
 yap_block yap_parse_block(yap_source* src, TSNode node){
+    yap_node_guard(node, yap_block, "Invalid block", src);
     yap_log("Parsing block");
-    TSNode opening_bracket = ts_node_child_by_field_name(node, "opening_bracket", strlen("opening_bracket"));
-    TSNode closing_bracket = ts_node_child_by_field_name(node, "closing_bracket", strlen("closing_bracket"));
-    if (ts_node_error_or_null(opening_bracket)){
-        yap_log("No opening brackets!");
-    }
-    darr statements = darr_new(yap_statement, ts_node_child_count(node)-2);
+    yap_node_field_by_name_var_check_push(node, opening_bracket, yap_block, "Missing opening bracket in block", src);
+    yap_node_field_by_name_var_check_push(node, closing_bracket, yap_block, "Missing closing bracket in block", src);
+    darr statements = darr_new(yap_statement, ts_node_named_child_count(node));
     int i = 0;
-    for (TSNode n = ts_node_next_sibling(opening_bracket); !ts_node_eq(n, closing_bracket); n = ts_node_next_sibling(n)){
-        //print?
-        char* node_val = yap_node_get_val(src, n);
-        yap_log("Statement #%d: %s%s", i, node_val, ts_node_has_error(n) ? ", has error":"");
-        free(node_val);
+    for_ts_named_children(node, n){
+        yap_log_node(src, "Statement", n);
         yap_statement st = yap_parse_statement(src, n);
-        if (st.kind == yap_statement_error){
-            yap_ctx_push_error(src->ctx, yap_node_error(src, n, "Invalid statement"));
-        }
         darr_push(yap_statement, statements, st);
         i++;
     }
+    yap_log("Parsed %d statements in block", i);
     return (yap_block){
         .kind=yap_block_valid,
         .statements=statements
@@ -102,30 +115,39 @@ yap_block yap_parse_block(yap_source* src, TSNode node){
 }
 
 yap_statement yap_parse_statement(yap_source* src, TSNode node){
-    // TSNode node = ts_node_child(p_node, 0);
+    yap_node_guard(node, yap_statement, "Invalid statement", src);
     yap_node_val(node);
     yap_statement ret = yap_error_result(yap_statement, "Invalid statement");
     const char* typ = ts_node_type(node);
+    yap_log("Parsing statement of type '%s'", typ);
     strus_switch(typ, "expr_statement"){
         ret = yap_parse_expr_statement(src, node);
-    }strus_case(typ, "other_stuff"){
-        //ret = yap_parse_other_stuff_statement();
+    }strus_case(typ, "empty_statement"){
+        ret = (yap_statement){
+            .kind=yap_statement_empty
+        };
     }else{
-        ret = yap_ts_error_result_node(yap_statement, "Invalid statement in block", src, node);
+        yap_log_node(src, "Unhandled statement", node);
+        yap_push_parse_error(src, node, "Unhandled statement in block");
+        ret = yap_ts_error_result_node(yap_statement, "Unhandled statement in block", src, node);
     }
     free(node_val);
     return ret;
 }
 
 yap_statement yap_parse_expr_statement(yap_source* src, TSNode node){
-    // TSNode expr_node = yap_node_get_field(node, "expr");
+    yap_node_guard(node, yap_statement, "Invalid expression statement", src);
     TSNode expr_node = ts_node_child(node, 0);
     yap_log("Parsing expression statement");
-    //Redundant?
-    if (ts_node_is_null(expr_node)){
+    if (ts_node_error_or_null(expr_node)){
+        yap_push_parse_error(src, node, "Missing expression in statement");
         return yap_error_result(yap_statement, "Missing expression");
     }
     yap_expr expr = yap_parse_expr(src, expr_node);
+    if (expr.kind == yap_expr_error){
+        yap_log("Expression statement contains invalid expression");
+        return yap_error_result(yap_statement, "Invalid expression statement");
+    }
     return (yap_statement){
         .kind=yap_statement_expr,
         .expr=expr
@@ -133,6 +155,7 @@ yap_statement yap_parse_expr_statement(yap_source* src, TSNode node){
 }
 
 yap_expr yap_parse_expr(yap_source* src, TSNode node){
+    yap_node_guard(node, yap_expr, "Invalid expression", src);
     const char* typ = ts_node_type(node);
     yap_log("Parsing expression of type '%s'", typ);
     yap_node_val(node);
@@ -146,32 +169,70 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
             .kind=yap_expr_assignment,
             .assignment=yap_parse_assignment(src, node)
         };
-    // }strus_case(typ, "assignment"){ ret = yap_parse_assignment(src, node); }
+    }strus_case(typ, "identifier"){ //variable access
+        ret = yap_parse_var_access(src, node);
     }else{
+        yap_log_node(src, "Unhandled expression", node);
+        yap_push_parse_error(src, node, "Invalid expression");
         ret = yap_ts_error_result_node(yap_expr, "Invalid expression", src, node);
     }
     free(node_val);
+    if (ret.kind == yap_expr_assignment && ret.assignment.kind == yap_assignment_error){
+        return yap_error_result(yap_expr, "Invalid assignment expression");
+    }
     return ret;
 }
 
+yap_expr yap_parse_var_access(yap_source* src, TSNode node){
+    yap_ctx *ctx = src->ctx;
+    yap_node_guard(node, yap_expr, "Invalid variable access", src);
+    yap_node_val(node);
+    const char* typ = ts_node_type(node);
+    yap_log("Parsing variable access of type '%s'", typ);
+    if (!strus_eq(typ, "identifier")){
+        yap_log_node(src, "Expected identifier for variable access", node);
+        yap_push_parse_error(src, node, "Expected identifier for variable access");
+        free(node_val);
+        return yap_error_result(yap_expr, "Expected identifier for variable access");
+    }
+    yap_scope* scope = darr_last(yap_scope, ctx->scopes);
+    const yap_var* var = yap_scope_get_var_recursive(scope, node_val);
+    //TODO: Fix this
+    return (yap_expr){
+        .kind=yap_expr_var,
+        .type=(yap_type){},
+        .is_lvalue=true,
+        // .is_comptime=false,
+        // .var=node_val
+    };
+}
+
 yap_expr yap_parse_literal(yap_source* src, TSNode p_node){
+    yap_node_guard(p_node, yap_expr, "Invalid literal", src);
     TSNode node = ts_node_child(p_node, 0);
+    if (ts_node_error_or_null(node)){
+        yap_push_parse_error(src, p_node, "Missing literal value");
+        return yap_error_result(yap_expr, "Missing literal value");
+    }
     const char* typ = ts_node_type(node);
     yap_node_val(node);
     yap_log("Parsing literal of type %s", typ);
 
     int kind = yap_literal_error;
-    char* text = "";
+    char* text = NULL;
     strus_switch(typ, "num_literal"){
         kind = yap_literal_numerical;
         text = node_val;
-    }strus_case(typ, "other"){
-        
+    }else{
+        yap_log_node(src, "Unhandled literal", node);
+        yap_push_parse_error(src, node, "Unhandled literal type");
+        free(node_val);
+        return yap_error_result(yap_expr, "Unhandled literal type");
     }
     yap_literal lit = (yap_literal){
       .kind = kind
     };
-    if (text[0] != '\0'){
+    if (text){
         lit.text = text;
     }else{
         free(node_val);
@@ -185,15 +246,22 @@ yap_expr yap_parse_literal(yap_source* src, TSNode p_node){
 }
 
 yap_expr yap_parse_bin_expr(yap_source* src, TSNode node){
+    yap_node_guard(node, yap_expr, "Invalid binary expression", src);
     yap_log("Parsing binary expression");
-    yap_node_field_by_name_var_check(node, left, yap_expr, "Missing left side expression of a binary operation");
-    yap_node_field_by_name_var_check(node, right, yap_expr, "Missing right side expression of a binary operation");
-    yap_node_field_by_name_var_check(node, operator, yap_expr, "Missing binary operator");
+    yap_node_field_by_name_var_check_push(node, left, yap_expr, "Missing left side expression of a binary operation", src);
+    yap_node_field_by_name_var_check_push(node, right, yap_expr, "Missing right side expression of a binary operation", src);
+    yap_node_field_by_name_var_check_push(node, operator, yap_expr, "Missing binary operator", src);
     char op = *yap_node_val_start(src, operator_node);
     yap_expr left_expr = yap_parse_expr(src, left_node);
     yap_expr right_expr = yap_parse_expr(src, right_node);
-    //TODO: Remove this   
-    // yap_node_error(src, node, "This is an error message!");
+    if (left_expr.kind == yap_expr_error || right_expr.kind == yap_expr_error){
+        yap_log("Binary expression contains invalid operand(s)");
+        return yap_error_result(yap_expr, "Invalid binary expression");
+    }
+    if (!strchr("+-*/%", op)){
+        yap_push_parse_error(src, operator_node, "Unsupported binary operator");
+        return yap_error_result(yap_expr, "Unsupported binary operator");
+    }
     return (yap_expr){
         .kind=yap_expr_bin,
         .bin_expr=(yap_bin_expr){
@@ -208,15 +276,25 @@ yap_expr yap_parse_bin_expr(yap_source* src, TSNode node){
 }
 
 yap_assignment yap_parse_assignment(yap_source* src, TSNode node){
-    yap_node_field_by_name_var_check(node, left, yap_assignment, "Missing left side of assignment");
-    yap_node_field_by_name_var_check(node, operator, yap_assignment, "Missing operator in assignment");
-    yap_node_field_by_name_var_check(node, right, yap_assignment, "Missing expression in assignment");
+    yap_node_guard(node, yap_assignment, "Invalid assignment", src);
+    yap_log("Parsing assignment expression");
+    yap_node_field_by_name_var_check_push(node, left, yap_assignment, "Missing left side of assignment", src);
+    yap_node_field_by_name_var_check_push(node, operator, yap_assignment, "Missing operator in assignment", src);
+    yap_node_field_by_name_var_check_push(node, right, yap_assignment, "Missing expression in assignment", src);
     yap_expr left = yap_parse_expr(src, left_node);
     yap_expr right = yap_parse_expr(src, right_node);
-    //TODO: Check for const
+    if (left.kind == yap_expr_error || right.kind == yap_expr_error){
+        yap_log("Assignment expression contains invalid side(s)");
+        return yap_error_result(yap_assignment, "Invalid assignment");
+    }
+    char* op_str = yap_node_get_val(src, operator_node);
+    char op = op_str[0];
+    yap_log("Assignment operator: %s", op_str);
+    free(op_str);
     return (yap_assignment){
         .kind=yap_assignment_valid,
         .left=mem_one_cpy(left),
         .right=mem_one_cpy(right),
+        .op=op,
     };
 }
