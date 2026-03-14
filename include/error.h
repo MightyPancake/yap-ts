@@ -11,6 +11,6 @@ yap_code_range yap_node_get_range(TSNode node);
 
 yap_error yap_node_error(yap_source* src, TSNode node, char* msg);
 
-void yap_ts_print_error(yap_error err);
+void yap_print_error(yap_error err);
 
 #endif //YAP_TS_ERROR

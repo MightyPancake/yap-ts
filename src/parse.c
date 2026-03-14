@@ -90,7 +90,7 @@ yap_block yap_parse_block(yap_source* src, TSNode node){
         free(node_val);
         yap_statement st = yap_parse_statement(src, n);
         if (st.kind == yap_statement_error){
-            yap_ts_print_error(yap_node_error(src, n, "Invalid statement"));
+            yap_ctx_push_error(src->ctx, yap_node_error(src, n, "Invalid statement"));
         }
         darr_push(yap_statement, statements, st);
         i++;

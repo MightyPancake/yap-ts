@@ -25,7 +25,7 @@ void yap_helper_print_line(int line_no, bool is_error){
   err_printf(aesc_reset " ");
 }
 
-void yap_ts_print_error(yap_error err){
+void yap_print_error(yap_error err){
   yap_source* src = err.src;
   yap_code_pos start = err.range.start;
   yap_code_pos end = err.range.end;
@@ -98,7 +98,7 @@ void yap_ts_print_error(yap_error err){
 yap_error yap_node_error(yap_source* src, TSNode node, char* msg){
   return (yap_error){
     .kind=yap_error_pos,
-    .msg=msg,
+    .msg=strus_copy(msg),
     .src=src,
     .range=yap_node_get_range(node)
   };
