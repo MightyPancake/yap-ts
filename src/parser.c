@@ -8,7 +8,7 @@ yap_parser* yap_new_parser(){
     ts_parser_set_language(ts_parser, tree_sitter_yap());
     yap_parser* parser = mem_one_cpy(((yap_parser){
          .ctx=yap_ctx_new(),
-         .source_stack=darr_new(int, 64),
+            .source_stack=darr_new(int),
          .parser=ts_parser,
          .tree=NULL,
      }));
@@ -96,16 +96,16 @@ void yap_parser_parse(yap_parser* ps){
     //TODO: This should append to state/parser?
     //TODO: Uncomment to actually parse. This is commented to not display errors
     yap_source_code src_c = yap_parse_source_file(yap_parser_top_source(ps), root);
-    darr_push(yap_source_code, ps->ctx->source_codes, src_c);
+    darr_push(ps->ctx->source_codes, src_c);
 }
 
 yap_source* yap_parser_top_source(yap_parser* ps){
-    return &darr_at(yap_source, ps->ctx->sources, darr_last(int, ps->source_stack));
+    return &(ps->ctx->sources[darr_last(ps->source_stack)]);
 }
 
 void yap_parser_push_source(yap_parser* ps, yap_source src){
     yap_ctx_push_source(ps->ctx, src);
-    darr_push(int, ps->source_stack, darr_len(ps->ctx->sources)-1);
+    darr_push(ps->source_stack, darr_len(ps->ctx->sources)-1);
 }
 
 void yap_parser_print_tree(yap_parser* ps){

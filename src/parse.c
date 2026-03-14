@@ -18,19 +18,19 @@ static void yap_log_node(yap_source* src, const char* prefix, TSNode node){
 
 yap_ctx* yap_parse(yap_args args){
     yap_parser* parser = yap_new_parser();
-    if (darr_empty(args.extra)){
+    if (darr_len(args.extra) == 0){
         printf("No source file provided\n");
         exit(1);
     }
-    yap_log("Parsing entry file '%s'", darr_first(char*, args.extra));
-    yap_parser_parse_file(parser, darr_first(char*, args.extra));
+    yap_log("Parsing entry file '%s'", darr_first(args.extra));
+    yap_parser_parse_file(parser, darr_first(args.extra));
     yap_ctx* ret = parser->ctx;
     yap_free_parser(parser);
     return ret;
 }
 
 yap_source_code yap_parse_source_file(yap_source* src, TSNode node){
-    darr defs = darr_new(yap_def, 64);
+    darr(yap_def) defs = darr_new(yap_def);
     if (ts_node_error_or_null(node)){
         yap_push_parse_error(src, node, "Expected source file root");
         return (yap_source_code){
@@ -41,7 +41,7 @@ yap_source_code yap_parse_source_file(yap_source* src, TSNode node){
     yap_log("Parsing source root of type '%s'", typ);
     if (strus_eq(typ, "source")){
         for_ts_named_children(node, n){
-            darr_push(yap_def, defs, yap_parse_decl(src, n));
+            darr_push(defs, yap_parse_decl(src, n));
         }
     }else{
         yap_push_parse_error(src, node, "Expected source file root");
@@ -87,7 +87,7 @@ yap_def yap_parse_fn_def(yap_source *src, TSNode node){
     return (yap_def){
         .kind=yap_def_func,
         .func_def=(yap_func_def){
-            .args=darr_new(int, 0),
+            .args=darr_new(int),
             .ret_typ=(yap_type){},
             .body=body
         }
@@ -99,12 +99,12 @@ yap_block yap_parse_block(yap_source* src, TSNode node){
     yap_log("Parsing block");
     yap_node_field_by_name_var_check_push(node, opening_bracket, yap_block, "Missing opening bracket in block", src);
     yap_node_field_by_name_var_check_push(node, closing_bracket, yap_block, "Missing closing bracket in block", src);
-    darr statements = darr_new(yap_statement, ts_node_named_child_count(node));
+    darr(yap_statement) statements = darr_new(yap_statement);
     int i = 0;
     for_ts_named_children(node, n){
         yap_log_node(src, "Statement", n);
         yap_statement st = yap_parse_statement(src, n);
-        darr_push(yap_statement, statements, st);
+        darr_push(statements, st);
         i++;
     }
     yap_log("Parsed %d statements in block", i);
@@ -195,8 +195,10 @@ yap_expr yap_parse_var_access(yap_source* src, TSNode node){
         free(node_val);
         return yap_error_result(yap_expr, "Expected identifier for variable access");
     }
-    yap_scope* scope = darr_last(yap_scope, ctx->scopes);
+    yap_scope* scope = darr_last(ctx->scopes);
     const yap_var* var = yap_scope_get_var_recursive(scope, node_val);
+    (void)var;
+    free(node_val);
     //TODO: Fix this
     return (yap_expr){
         .kind=yap_expr_var,

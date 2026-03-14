@@ -4,7 +4,7 @@
 typedef struct yap_parser{
   yap_ctx* ctx;
   //
-  darr source_stack;
+  darr(int) source_stack;
   //
   TSParser* parser;
   TSTree* tree;
