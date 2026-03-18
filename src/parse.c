@@ -88,7 +88,8 @@ yap_def yap_parse_fn_def(yap_source *src, TSNode node){
         .kind=yap_def_func,
         .func_def=(yap_func_def){
             .args=darr_new(int),
-            .ret_typ=(yap_type){},
+            //TODO: FIX! Get argument types and names from the parameter list
+            .ret_typ=0,
             .body=body
         }
     };
@@ -126,6 +127,8 @@ yap_statement yap_parse_statement(yap_source* src, TSNode node){
         ret = (yap_statement){
             .kind=yap_statement_empty
         };
+    }strus_case(typ, "var_decl"){
+        ret = yap_parse_var_decl(src, node);
     }else{
         yap_log_node(src, "Unhandled statement", node);
         yap_push_parse_error(src, node, "Unhandled statement in block");
@@ -133,6 +136,40 @@ yap_statement yap_parse_statement(yap_source* src, TSNode node){
     }
     free(node_val);
     return ret;
+}
+
+yap_statement yap_parse_var_decl(yap_source* src, TSNode node){
+    yap_node_guard(node, yap_statement, "Invalid variable declaration", src);
+    yap_node_field_by_name_var_check_push(node, name, yap_statement, "Missing variable name in declaration", src);
+    yap_node_field_by_name_var_check_push(node, value, yap_statement, "Missing variable value in declaration", src);
+    yap_node_val(name_node);
+    yap_node_val(value_node);
+    yap_log("Parsing variable declaration: %s := %s", name_node_val, value_node_val);
+    //Get assignment value expression
+    yap_expr value_expr = yap_parse_expr(src, value_node);
+    if (value_expr.kind == yap_expr_error){
+        yap_log("Invalid variable initializer expression");
+        free(name_node_val);
+        free(value_node_val);
+        return yap_error_result(yap_statement, "Invalid variable initializer expression");
+    }
+    //Get type from the initializer expression.
+    yap_type_id var_type_id = yap_ctx_coerce_type_id_to_id(src->ctx, value_expr.type);
+    yap_statement res = (yap_statement){
+        .kind=yap_statement_var_decl,
+        .var_decl=(yap_var_decl){
+            .var=(yap_var){
+                .name=name_node_val,
+                .type=var_type_id
+            },
+            .expr=value_expr
+        }
+    };
+    yap_log("Declared variable '%s' of type id %d", name_node_val, var_type_id);
+    yap_scope* scope = yap_ctx_current_scope(src->ctx);
+    yap_scope_set_var(scope, res.var_decl.var);
+    free(value_node_val);
+    return res;
 }
 
 yap_statement yap_parse_expr_statement(yap_source* src, TSNode node){
@@ -197,19 +234,25 @@ yap_expr yap_parse_var_access(yap_source* src, TSNode node){
     }
     yap_scope* scope = darr_last(ctx->scopes);
     const yap_var* var = yap_scope_get_var_recursive(scope, node_val);
-    (void)var;
+    yap_log("Variable '%s': %s", node_val, var ? var->name : "not found");
+    if (!var){
+        yap_push_parse_error(src, node, "Undefined variable");
+        free(node_val);
+        return yap_error_result(yap_expr, "Undefined variable");
+    }
+    // (void)var;
     free(node_val);
-    //TODO: Fix this
     return (yap_expr){
         .kind=yap_expr_var,
-        .type=(yap_type){},
+        .type=var->type,
         .is_lvalue=true,
-        // .is_comptime=false,
-        // .var=node_val
+        //TODO: Determine if variable is comptime or not, currently all variables are non-comptime
+        .is_comptime=false,
     };
 }
 
 yap_expr yap_parse_literal(yap_source* src, TSNode p_node){
+    //TODO: Handle different literal types, currently only numerical literals are supported and treated as untyped ints
     yap_node_guard(p_node, yap_expr, "Invalid literal", src);
     TSNode node = ts_node_child(p_node, 0);
     if (ts_node_error_or_null(node)){
@@ -218,13 +261,15 @@ yap_expr yap_parse_literal(yap_source* src, TSNode p_node){
     }
     const char* typ = ts_node_type(node);
     yap_node_val(node);
-    yap_log("Parsing literal of type %s", typ);
+    yap_log("Parsing literal of type '%s'", typ);
 
     int kind = yap_literal_error;
-    char* text = NULL;
+    yap_expr res = (yap_expr){.kind = yap_expr_error};
+    yap_ctx* ctx = src->ctx;
+    
     strus_switch(typ, "num_literal"){
         kind = yap_literal_numerical;
-        text = node_val;
+        res.type = ctx->untyped_int_type_id;
     }else{
         yap_log_node(src, "Unhandled literal", node);
         yap_push_parse_error(src, node, "Unhandled literal type");
@@ -232,16 +277,13 @@ yap_expr yap_parse_literal(yap_source* src, TSNode p_node){
         return yap_error_result(yap_expr, "Unhandled literal type");
     }
     yap_literal lit = (yap_literal){
-      .kind = kind
+      .kind = kind,
+      .text = node_val
     };
-    if (text){
-        lit.text = text;
-    }else{
-        free(node_val);
-    }
     return (yap_expr){
         .kind=yap_expr_literal,
         .literal=lit,
+        .type=res.type,
         .is_comptime=true,
         .is_lvalue=false
     };
@@ -264,6 +306,13 @@ yap_expr yap_parse_bin_expr(yap_source* src, TSNode node){
         yap_push_parse_error(src, operator_node, "Unsupported binary operator");
         return yap_error_result(yap_expr, "Unsupported binary operator");
     }
+    //TODO: Check if both types are compatible and figure out the resulting type
+    bool types_compatible = yap_ctx_type_ids_eq(src->ctx, left_expr.type, right_expr.type);
+    if (!types_compatible){
+        yap_push_parse_error(src, node, "Incompatible types in binary expression");
+        return yap_error_result(yap_expr, "Incompatible types in binary expression");
+    }
+    yap_type_id result_type = yap_ctx_coerce_type_id_to_id(src->ctx, left_expr.type);
     return (yap_expr){
         .kind=yap_expr_bin,
         .bin_expr=(yap_bin_expr){
@@ -273,8 +322,8 @@ yap_expr yap_parse_bin_expr(yap_source* src, TSNode node){
         },
         .is_comptime=left_expr.is_comptime && right_expr.is_comptime,
         .is_lvalue=false,
+        .type=result_type
     };
-
 }
 
 yap_assignment yap_parse_assignment(yap_source* src, TSNode node){

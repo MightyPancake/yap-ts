@@ -12,6 +12,7 @@ yap_assignment yap_parse_assignment(yap_source* src, TSNode node);
 //statement
 yap_statement yap_parse_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_expr_statement(yap_source* src, TSNode node);
+yap_statement yap_parse_var_decl(yap_source* src, TSNode node);
 //expr
 yap_expr yap_parse_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_literal(yap_source* src, TSNode node);
