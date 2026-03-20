@@ -5,8 +5,8 @@
 
 yap_ctx* yap_parse(yap_args args);
 yap_source_code yap_parse_source_file(yap_source* src, TSNode node);
-yap_def yap_parse_decl(yap_source* src, TSNode node);
-yap_def yap_parse_fn_def(yap_source* src, TSNode node);
+yap_decl yap_parse_decl(yap_source* src, TSNode node);
+yap_decl yap_parse_fn_decl(yap_source* src, TSNode node);
 yap_block yap_parse_block(yap_source* src, TSNode node);
 yap_assignment yap_parse_assignment(yap_source* src, TSNode node);
 //statement
