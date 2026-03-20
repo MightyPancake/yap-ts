@@ -2,6 +2,8 @@
 #define YAP_NODE_H
 
 #include "tree_sitter/api.h"
+#include <stddef.h>
+#include <string.h>
 
 #define yap_node_type(NODE) const char* NODE##_type = ts_node_type(NODE)
 #define yap_node_start(NODE) uint32_t NODE##_start = ts_node_start_byte(NODE)
@@ -24,6 +26,19 @@
 //These require to be freed after use
 #define yap_node_get_val(SRC, NODE) (strndup(yap_node_val_start(SRC, NODE), ts_node_end_byte(NODE) - ts_node_start_byte(NODE)))
 #define yap_node_val(NODE) char* NODE##_val = yap_node_get_val(src, NODE);
+#define yap_node_get_val_ctx(SRC, NODE) ({ \
+  uint32_t _yap_node_start = ts_node_start_byte((NODE)); \
+  uint32_t _yap_node_end = ts_node_end_byte((NODE)); \
+  size_t _yap_node_len = (size_t)(_yap_node_end - _yap_node_start); \
+  yap_ctx* _yap_ctx = (yap_ctx*)((SRC)->ctx); \
+  char* _yap_node_out = _yap_ctx ? (char*)quake_alloc(&_yap_ctx->arena, _yap_node_len + 1) : NULL; \
+  if (_yap_node_out) { \
+    memcpy(_yap_node_out, (SRC)->content + _yap_node_start, _yap_node_len); \
+    _yap_node_out[_yap_node_len] = '\0'; \
+  } \
+  _yap_node_out; \
+})
+#define yap_node_val_ctx(NODE) char* NODE##_val = yap_node_get_val_ctx(src, NODE);
 #define yap_node_str(NODE) char* NODE##_str = ts_node_string(NODE)
 
 #define for_ts_children(N, C) for(TSNode C=ts_node_child(N, 0); !ts_node_is_null(C); C=ts_node_next_sibling(C))
