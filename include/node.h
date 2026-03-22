@@ -50,19 +50,19 @@
 
 // Checks null only — does NOT push an error, caller is responsible
 #define yap_node_field_var_check(VAR_NAME, NODE, NAME, RET_TYP, MSG) yap_node_field_var(VAR_NAME, NODE, NAME); \
-if (ts_node_error_or_null(VAR_NAME)) return yap_error_result(RET_TYP, MSG)
+if (ts_node_null_or_error(VAR_NAME)) return yap_error_result(RET_TYP, MSG)
 
 // Checks null/error AND pushes to ctx->errors — use at the detection site
 #define yap_node_field_var_check_push(VAR_NAME, NODE, NAME, RET_TYP, MSG, SRC) \
   yap_node_field_var(VAR_NAME, NODE, NAME); \
-  if (ts_node_error_or_null(VAR_NAME)) { \
+  if (ts_node_null_or_error(VAR_NAME)) { \
     yap_ctx_push_error((SRC)->ctx, yap_node_error(SRC, NODE, MSG)); \
     return yap_error_result(RET_TYP, MSG); \
   }
 
 // Guard for the node passed into a parse function — catches already-poisoned input
 #define yap_node_guard(NODE, RET_TYP, MSG, SRC) \
-  if (ts_node_error_or_null(NODE)) { \
+  if (ts_node_null_or_error(NODE)) { \
     yap_ctx_push_error((SRC)->ctx, yap_node_error(SRC, NODE, MSG)); \
     return yap_error_result(RET_TYP, MSG); \
   }
@@ -71,7 +71,7 @@ if (ts_node_error_or_null(VAR_NAME)) return yap_error_result(RET_TYP, MSG)
 #define yap_node_field_by_name_var_check(NODE, NAME, RET_TYP, MSG) yap_node_field_var_check(NAME##_node, NODE, #NAME, RET_TYP, MSG)
 #define yap_node_field_by_name_var_check_push(NODE, NAME, RET_TYP, MSG, SRC) yap_node_field_var_check_push(NAME##_node, NODE, #NAME, RET_TYP, MSG, SRC)
 
-#define ts_node_error_or_null(N) (ts_node_is_error(N) || ts_node_is_null(N))
+#define ts_node_null_or_error(N) (ts_node_is_null(N) || ts_node_is_error(N))
 
 void yap_print_tree(TSNode root, int depth);
 

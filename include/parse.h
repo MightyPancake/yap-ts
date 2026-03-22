@@ -19,4 +19,11 @@ yap_expr yap_parse_literal(yap_source* src, TSNode node);
 yap_expr yap_parse_bin_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_var_access(yap_source* src, TSNode node);
 
+darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node);
+yap_func_arg yap_parse_fn_arg(yap_source* src, TSNode node);
+
+yap_type_id yap_parse_type(yap_source* src, TSNode node);
+yap_type_id yap_parse_pointer_type(yap_source* src, TSNode node);
+yap_type_id yap_parse_function_type(yap_source* src, TSNode node);
+
 #endif //YAP_PARSE_H
