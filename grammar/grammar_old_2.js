@@ -60,10 +60,7 @@ module.exports = grammar({
   name: "yap",
   conflicts: $ => [
     [$.function_declaration, $._expr],
-    [$.macro_declaration, $.macro_statement, $._expr],
-    [$.macro_statement, $._expr],
-    [$.typ, $._expr],
-    [$.macro_type, $._expr],
+    [$.typ, $.method_access],
   ],
   //Things to ignore
   extras: $ => [
@@ -93,12 +90,10 @@ module.exports = grammar({
     //def _defintion
     _declaration: $ => choice(
       $.function_declaration,
-      $.macro_declaration,
       // $.struct_declaration,
       $._statement,
       //enum 
     ),
-    macro_declaration: $ => $._macro_call,
     //def function_declaration
     function_declaration: $ => seq(
       field("fn", "fn"),
@@ -147,33 +142,19 @@ module.exports = grammar({
       $._param
     ),
     //def typ
+    //This is useful! It allows for checks (at least in theory?)
     typ: $ => choice(
-      $.pointer_type,
-      $.identifier,
-      $.module_access,
-      $.function_type,
-      $.paren_type,
-      $.macro_type,
+      $._expr,
+      $.function_type
     ),
-    paren_type: $ => seq(
-      field("open_paren", '('),
-      field("inner", $.typ),
-      field("close_paren", ')'),
-    ),
-    pointer_type: $ => prec.right(seq(
-      field("subtyp", $.typ),
-      field("ptr_of", '@'),
-      repeat('@'),
-    )),
     function_type: $ => seq(
       field("open_paren", '('),
-      optional(field("return_type", $.typ)),
+      field("return_type", $.typ),
       field("fn", "fn"),
-      optional(field("func_type_params", $.func_type_params)),
+      optional($.func_type_params),
       field("close_paren", ')'),
     ),
     func_type_params: $ => comma_sep($.typ),
-    macro_type: $ => $._macro_call,
     // typ: $ => choice(
     //   // field("primary", $.identifier),
     //   field("pointer", seq(
@@ -197,7 +178,6 @@ module.exports = grammar({
     ),
     //def _statement
     _statement: $ => choice(
-      $.macro_statement,
       $.expr_statement,
       $.if_statement,
       $.if_else_statement,
@@ -209,7 +189,6 @@ module.exports = grammar({
       $.break_statement,
       $.continue_statement
     ),
-    macro_statement: $ => $._macro_call,
     //def break_statement
     break_statement: $ => "break",
     continue_statement: $ => "continue",
