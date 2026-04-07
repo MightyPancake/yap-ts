@@ -31,14 +31,17 @@ void yap_print_error(yap_error err){
   yap_code_pos end = err.range.end;
   //TODO: Implement
   // char* src_stack = strus_newf("In file: %s\n"err.src->path);
-  err_printf("File "aesc_cyan"%s"aesc_reset" at "aesc_yellow "%d:%d\n" aesc_reset, src->path, start.line+1, start.column);
-  err_printf("└─ used in " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
+  err_printf(aesc_red "Error" aesc_reset);
+  err_printf(" in "aesc_cyan"%s"aesc_reset" at "aesc_yellow "%d:%d\n" aesc_reset, src->path, start.line+1, start.column);
+  err_printf("         └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
+  // err_printf("           └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
   yap_source* parent = (yap_source*)src->parent;
   while(parent){
-    err_printf("└─ used in " aesc_cyan"%s"aesc_reset"\n", parent->path);
+    err_printf("└─ from " aesc_cyan"%s"aesc_reset"\n", parent->path);
     parent = (yap_source*)parent->parent;
   }
-  err_printf(aesc_red aesc_style("1") "ERROR: " aesc_style("3") "%s\n\n" aesc_reset, err.msg);
+  err_printf(aesc_red aesc_style("1") "" aesc_style("3") "  %s\n\n" aesc_reset, err.msg);
+  // err_printf("\n");
   // err_printf("%s\n", src->content);
   uint start_byte = start.offset;
   int newlines_before = 2;
@@ -64,20 +67,20 @@ void yap_print_error(yap_error err){
   int offset = start_byte;
   bool style_flag = false;
   while(true){
-    if (style_flag) err_printf(aesc_reset);
-      if (start.offset <= offset && offset < end.offset){
-        err_printf(aesc_red aesc_style("27") aesc_style("4") aesc_style("5"));
-        style_flag = true;
-      // }else if (start.line <= line && line <= end.line){
-      //   err_printf(aesc_style("100") aesc_black);
-      //   style_flag = true;
-      }else if (style_flag){
-        err_printf(aesc_reset);
-        style_flag = false;
-      }
+    if (style_flag) err_printf(aesc_reset );
+    if (start.offset <= offset && offset < end.offset){
+      err_printf(aesc_red aesc_style("27") aesc_style("4") aesc_style("5") );
+      style_flag = true;
+    // }else if (start.line <= line && line <= end.line){
+    //   err_printf(aesc_style("100") aesc_black);
+    //   style_flag = true;
+    }else if (style_flag){
+      err_printf(aesc_reset );
+      style_flag = false;
+    }
     // printf("\noffset = %d\n", offset);
     if (*c == '\n'){
-      err_printf(aesc_reset"\n");
+      err_printf(aesc_reset  "\t\n");
       if (line++==end.line+newlines_after){
         break;
       }
@@ -93,6 +96,7 @@ void yap_print_error(yap_error err){
     c++;
     offset++;
   }
+  err_printf(aesc_reset"\n");
 }
 
 yap_error yap_node_error(yap_source* src, TSNode node, char* msg){

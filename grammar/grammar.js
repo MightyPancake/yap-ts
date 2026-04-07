@@ -101,16 +101,18 @@ module.exports = grammar({
     macro_declaration: $ => $._macro_call,
     //def function_declaration
     function_declaration: $ => seq(
+      field("return_type", $.typ),
       field("fn", "fn"),
-      optional(field("object", seq(
-        $.typ,
+      optional(
+        field("subject", seq(
+        field("type", $.typ),
         ":"
-      ))),
+        )
+      )),
       field("name", $.identifier),
       "(",
       field("args", optional($.func_decl_args)),
       ")",
-      optional(field("return_type", seq("->", $.typ))),
       field("body", $.block)
     ),
     //def func_decl_args
@@ -188,7 +190,6 @@ module.exports = grammar({
     //     )
     //   ),
     // ),
-    // X?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?D?
     //def block
     block: $ => seq(
       field("opening_bracket", '{'),
@@ -264,7 +265,7 @@ module.exports = grammar({
     )),
     //def func_call
     func_call: $ => prec.right(PREC.CALL, seq(
-      field("caller", $._expr),
+      field("func", $._expr),
       field("open_bracket", '('),
       field("params", optional($.call_params)),
       field("close_bracket", ')')

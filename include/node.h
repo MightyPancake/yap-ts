@@ -67,9 +67,26 @@ if (ts_node_null_or_error(VAR_NAME)) return yap_error_result(RET_TYP, MSG)
     return yap_error_result(RET_TYP, MSG); \
   }
 
+#define yap_node_untyped_guard(NODE, MSG, SRC) \
+  if (ts_node_null_or_error(NODE)) { \
+    yap_ctx_push_error((SRC)->ctx, yap_node_error(SRC, NODE, MSG)); \
+    return; \
+  }
+
 #define yap_node_field_by_name_var(NODE, NAME) yap_node_field_var(NAME##_node, NODE, #NAME)
 #define yap_node_field_by_name_var_check(NODE, NAME, RET_TYP, MSG) yap_node_field_var_check(NAME##_node, NODE, #NAME, RET_TYP, MSG)
 #define yap_node_field_by_name_var_check_push(NODE, NAME, RET_TYP, MSG, SRC) yap_node_field_var_check_push(NAME##_node, NODE, #NAME, RET_TYP, MSG, SRC)
+
+#define yap_node_field_by_name_var_untyped(NODE, NAME) yap_node_field_var(NAME##_node, NODE, #NAME)
+#define yap_node_field_by_name_var_untyped_check(NODE, NAME, MSG, SRC) \
+  yap_node_field_var(NAME##_node, NODE, #NAME); \
+  if (ts_node_null_or_error(NAME##_node)) return;
+#define yap_node_field_by_name_var_untyped_check_push(NODE, NAME, MSG, SRC) \
+  yap_node_field_var(NAME##_node, NODE, #NAME); \
+  if (ts_node_null_or_error(NAME##_node)) { \
+    yap_ctx_push_error((SRC)->ctx, yap_node_error(SRC, NODE, MSG)); \
+    return; \
+  }
 
 #define ts_node_null_or_error(N) (ts_node_is_null(N) || ts_node_is_error(N))
 

@@ -3,11 +3,20 @@
 
 #include <ts_yap.h>
 
+// Top level parsing functions
+void yap_parse_top_level_declaration(yap_source* src, TSNode node);
+void yap_parse_top_level_func_decl(yap_source *src, TSNode node);
+
+// Main parsing functions
 yap_ctx* yap_parse(yap_args args);
 yap_source_code yap_parse_source_file(yap_source* src, TSNode node);
+// Declarations
 yap_decl yap_parse_decl(yap_source* src, TSNode node);
 yap_decl yap_parse_fn_decl(yap_source* src, TSNode node);
+
+// Block
 yap_block yap_parse_block(yap_source* src, TSNode node);
+
 yap_assignment yap_parse_assignment(yap_source* src, TSNode node);
 //statement
 yap_statement yap_parse_statement(yap_source* src, TSNode node);
@@ -18,6 +27,7 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_literal(yap_source* src, TSNode node);
 yap_expr yap_parse_bin_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_var_access(yap_source* src, TSNode node);
+yap_expr yap_parse_func_call(yap_source* src, TSNode node);
 
 darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node);
 yap_func_arg yap_parse_fn_arg(yap_source* src, TSNode node);
