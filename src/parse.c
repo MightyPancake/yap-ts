@@ -121,7 +121,8 @@ void yap_parse_top_level_func_decl(yap_source *src, TSNode node){
     yap_node_field_by_name_var_untyped_check(node, name, "Missing function name", src);
     yap_node_field_by_name_var_untyped_check(node, body, "Missing function body", src);
     yap_node_field_by_name_var_untyped_check(node, return_type, "Missing return type", src);
-    yap_node_field_by_name_var_untyped_check(node, args, "Missing function arguments", src);
+    yap_node_field_var(args_node, node, "args");
+    // yap_node_field_by_name_var_untyped_check(node, args, "Missing function arguments", src);
     // LOGGING
     yap_node_val_ctx(name_node);
     yap_node_start_point(node);
@@ -177,7 +178,8 @@ yap_decl yap_parse_fn_decl(yap_source *src, TSNode node){
     yap_ctx* ctx = src->ctx;
     yap_node_guard(node, yap_decl, "Invalid function declaration", src);
     yap_node_field_by_name_var_check_push(node, name, yap_decl, "Missing function name", src);
-    yap_node_field_by_name_var_check_push(node, args, yap_decl, "Missing function arguments", src);
+    // yap_node_field_by_name_var_check_push(node, args, yap_decl, "Missing function arguments", src);
+    yap_node_field_var(args_node, node, "args");
     yap_node_field_by_name_var_check_push(node, body, yap_decl, "Missing function body", src);
     
     yap_node_val_ctx(name_node);
@@ -232,6 +234,9 @@ yap_decl yap_parse_fn_decl(yap_source *src, TSNode node){
 
 darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node){
     yap_ctx* ctx = src->ctx;
+    if (ts_node_is_null(node)){
+        return yap_ctx_darr_new(ctx, yap_func_arg, .cap=0, .len=0);
+    }
     uint32_t param_count = ts_node_named_child_count(node);
     yap_log("Parsing %u function arguments", param_count);
     darr(yap_func_arg) args = yap_ctx_darr_new(ctx, yap_func_arg, .cap=param_count, .len=0);
@@ -386,17 +391,139 @@ yap_statement yap_parse_statement(yap_source* src, TSNode node){
     strus_switch(typ, "expr_statement"){
         ret = yap_parse_expr_statement(src, node);
     }strus_case(typ, "empty_statement"){
-        ret = (yap_statement){
-            .kind=yap_statement_empty
-        };
+        ret = yap_parse_empty_statement(src, node);
     }strus_case(typ, "var_decl"){
         ret = yap_parse_var_decl(src, node);
+    }strus_case(typ, "return_statement"){
+        ret = yap_parse_return_statement(src, node);
+    }strus_case(typ, "if_statement"){
+        ret = yap_parse_if_statement(src, node);
+    }strus_case(typ, "if_else_statement"){
+        ret = yap_parse_if_else_statement(src, node);
+    }strus_case(typ, "while_loop"){
+        ret = yap_parse_while_loop(src, node);
     }else{
         yap_log_node(src, "Unhandled statement", node);
-        yap_push_parse_error(src, node, "Unhandled statement in block");
-        ret = yap_ts_error_result_node(yap_statement, "Unhandled statement in block", src, node);
+        yap_push_parse_error(src, node, "Unhandled statement");
+        ret = yap_ts_error_result_node(yap_statement, "Unhandled statement", src, node);
     }
     return ret;
+}
+
+yap_statement yap_parse_while_loop(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_log("Parsing while loop");
+    yap_node_guard(node, yap_statement, "Invalid while loop", src);
+    yap_node_field_by_name_var_check_push(node, condition, yap_statement, "Missing condition in while loop", src);
+    yap_node_field_by_name_var_check_push(node, body, yap_statement, "Missing body in while loop", src);
+    yap_expr condition = yap_parse_expr(src, condition_node);
+    if (condition.kind == yap_expr_error){
+        yap_log("Invalid condition expression in while loop");
+        return yap_error_result(yap_statement, "Invalid condition expression in while loop");
+    }
+    yap_statement body = yap_parse_statement(src, body_node);
+    if (body.kind == yap_statement_error){
+        yap_log("Invalid body statement in while loop");
+        return yap_error_result(yap_statement, "Invalid body statement in while loop");
+    }
+    return (yap_statement){
+        .kind=yap_statement_while,
+        .while_stmt=(yap_while){
+            .condition=condition,
+            .body=yap_ctx_one_cpy(ctx, body)
+        }
+    };
+}
+
+yap_statement yap_parse_if_statement(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_guard(node, yap_statement, "Invalid if statement", src);
+    yap_node_field_by_name_var_check_push(node, condition, yap_statement, "Missing condition in if statement", src);
+    yap_node_field_by_name_var_check_push(node, then_branch, yap_statement, "Missing then branch in if statement", src);
+    yap_expr condition = yap_parse_expr(src, condition_node);
+    if (condition.kind == yap_expr_error){
+        yap_log("Invalid condition expression in if statement");
+        return yap_error_result(yap_statement, "Invalid condition expression in if statement");
+    }
+    yap_statement then_branch = yap_parse_statement(src, then_branch_node);
+    if (then_branch.kind == yap_statement_error){
+        yap_log("Invalid then branch statement in if statement");
+        return yap_error_result(yap_statement, "Invalid then branch statement in if statement");
+    }
+    return (yap_statement){
+        .kind=yap_statement_if,
+        .if_stmt=(yap_if){
+            .condition=condition,
+            .then_branch=yap_ctx_one_cpy(ctx, then_branch)
+        }
+    };
+}
+
+yap_statement yap_parse_if_else_statement(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_guard(node, yap_statement, "Invalid if-else statement", src);
+    yap_node_field_by_name_var_check_push(node, condition, yap_statement, "Missing condition in if-else statement", src);
+    yap_node_field_by_name_var_check_push(node, then_branch, yap_statement, "Missing then branch in if-else statement", src);
+    yap_node_field_by_name_var_check_push(node, else_branch, yap_statement, "Missing else branch in if-else statement", src);
+    yap_expr condition = yap_parse_expr(src, condition_node);
+    if (condition.kind == yap_expr_error){
+        yap_log("Invalid condition expression in if-else statement");
+        return yap_error_result(yap_statement, "Invalid condition expression in if-else statement");
+    }
+    yap_statement then_branch = yap_parse_statement(src, then_branch_node);
+    if (then_branch.kind == yap_statement_error){
+        yap_log("Invalid then branch statement in if-else statement");
+        return yap_error_result(yap_statement, "Invalid then branch statement in if-else statement");
+    }
+    yap_statement else_branch = yap_parse_statement(src, else_branch_node);
+    if (else_branch.kind == yap_statement_error){
+        yap_log("Invalid else branch statement in if-else statement");
+        return yap_error_result(yap_statement, "Invalid else branch statement in if-else statement");
+    }
+    return (yap_statement){
+        .kind=yap_statement_if_else,
+        .if_else_stmt=(yap_if_else){
+            .condition=condition,
+            .then_branch=yap_ctx_one_cpy(ctx, then_branch),
+            .else_branch=yap_ctx_one_cpy(ctx, else_branch)
+        }
+    };
+}
+
+yap_statement yap_parse_empty_statement(yap_source* src, TSNode node){
+    yap_log("Parsing empty statement");
+    return (yap_statement){
+        .kind=yap_statement_empty
+    };
+}
+
+yap_statement yap_parse_return_statement(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_guard(node, yap_statement, "Invalid return statement", src);
+    yap_node_field_var(return_value_node, node, "value");
+    if (ts_node_null_or_error(return_value_node)){
+        yap_log("Parsing return statement with no return value");
+        return (yap_statement){
+            .kind=yap_statement_return,
+            .return_stmt=(yap_return_statement){
+                .value=(yap_expr){
+                    .type=ctx->void_type_id
+                }
+            }
+        };
+    }
+    yap_log("Parsing return statement with return value");
+    yap_expr return_value = yap_parse_expr(src, return_value_node);
+    if (return_value.kind == yap_expr_error){
+        yap_log("Invalid return value expression in return statement");
+        return yap_error_result(yap_statement, "Invalid return value expression in return statement");
+    }
+    return (yap_statement){
+        .kind=yap_statement_return,
+        .return_stmt=(yap_return_statement){
+            .value=return_value
+        }
+    };
 }
 
 yap_statement yap_parse_var_decl(yap_source* src, TSNode node){
@@ -482,13 +609,15 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
 }
 
 yap_expr yap_parse_func_call(yap_source* src, TSNode node){
+    //TODO: Rework this parsing; gather params first, then decide what to do with them and emit errors!
     yap_ctx* ctx = src->ctx;
     yap_node_guard(node, yap_expr, "Invalid function call", src);
     // TODO: Parse type of function call expression
     // This *has* to be done to get default and named parameters to work.
     // Right now the compiler just rejects them!
     yap_node_field_by_name_var_check_push(node, func, yap_expr, "Missing function to call", src);
-    yap_node_field_by_name_var_check_push(node, params, yap_expr, "Missing arguments in function call", src);
+    // yap_node_field_by_name_var_check_push(node, params, yap_expr, "Missing arguments in function call", src);
+    yap_node_field_var(params_node, node, "params");
     yap_expr func_expr = yap_parse_expr(src, func_node);
     yap_type* func_type = yap_ctx_get_type(ctx, func_expr.type);
     yap_type_id return_type_id = 0;
@@ -509,11 +638,15 @@ yap_expr yap_parse_func_call(yap_source* src, TSNode node){
     }else{
         uint32_t params_count = ts_node_named_child_count(params_node);
         yap_log("Parsing function call with %u arguments", params_count);
-        params = yap_ctx_darr_new(ctx, yap_expr, .cap=params_count, .len=0);
+        params = yap_ctx_darr_new(ctx, yap_expr, .cap=darr_len(args), .len=0);
+        bool too_many_args = false;
+        uint32_t unnamed_params = 0;
         for_ts_named_children(params_node, n){
             yap_log_node(src, "Function call argument", n);
             const char* param_kind = ts_node_type(n);
             strus_switch(param_kind, "unnamed_param"){
+                unnamed_params++;
+                if (too_many_args) continue;
                 TSNode param_expr_node = ts_node_child(n, 0);
                 yap_expr param_expr = yap_parse_expr(src, param_expr_node);
                 if (param_expr.kind == yap_expr_error){
@@ -522,9 +655,8 @@ yap_expr yap_parse_func_call(yap_source* src, TSNode node){
                 }
                 //Check if original function type has enough parameters
                 if (darr_len(args) <= darr_len(params)){
-                    yap_log("Too many arguments in function call, expected at most %u but got %u", darr_len(args), darr_len(params) + 1);
-                    yap_push_parse_error(src, param_expr_node, "Too many parameters, expected at most "aesc_reverse("%u"), darr_len(args));
-                    return yap_error_result(yap_expr, "Too many arguments in function call");
+                    too_many_args = true;
+                    continue;
                 }
                 //Check type missmatch between argument and parameter
                 if (!yap_ctx_type_id_compatible(ctx, param_expr.type, args[darr_len(params)])){
@@ -541,6 +673,11 @@ yap_expr yap_parse_func_call(yap_source* src, TSNode node){
                 //TODO: Support named params
                 return yap_error_result(yap_expr, "Named parameters are not supported yet");
             }
+        }
+        if (too_many_args){
+            yap_log("Too many arguments in function call, expected at most %u but got %u", darr_len(args), darr_len(params) + 1);
+            yap_push_parse_error(src, node, "Expected at most "aesc_reverse("%u")" parameters, but got "aesc_reverse("%u"), darr_len(args), unnamed_params);
+            return yap_error_result(yap_expr, "Too many arguments in function call");
         }
     }
     return (yap_expr){
