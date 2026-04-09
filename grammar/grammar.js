@@ -198,17 +198,17 @@ module.exports = grammar({
     ),
     //def _statement
     _statement: $ => choice(
-      $.macro_statement,
-      $.expr_statement,
+      $.macro_statement, //TODO
+      $.var_decl,
+      $.expr_statement, 
       $.if_statement,
       $.if_else_statement,
       $.empty_statement,
-      $.while_loop,
-      $.for_loop,
-      $.var_decl,
+      $.while_loop, //TODO
+      $.for_loop, //TODO
       $.return_statement,
-      $.break_statement,
-      $.continue_statement
+      $.break_statement, //TODO
+      $.continue_statement //TODO
     ),
     macro_statement: $ => $._macro_call,
     //def break_statement
@@ -216,7 +216,10 @@ module.exports = grammar({
     continue_statement: $ => "continue",
     return_statement: $ => seq(
       field("return", "ret"),
-      field("value", $._expr),
+      choice(
+        field("value", $._expr),
+        field("empty", ";")
+      )
     ),
     //def var_decl
     var_decl: $ => seq(
@@ -244,15 +247,15 @@ module.exports = grammar({
     if_statement: $ => prec.right(PREC.IF, seq(
       field("if", "if"),
       field("condition", $._expr),
-      field("statement", $._statement)
+      field("then_branch", $._statement)
     )),
     //def if_else_statement
     if_else_statement: $ => prec.right(PREC.IF_ELSE, seq(
       field("if", "if"),
       field("condition", $._expr),
-      field("statement", $._statement),
+      field("then_branch", $._statement),
       field("else", "else"),
-      field("else_statement", $._statement),
+      field("else_branch", $._statement),
     )),
     //ternary_op
     ternary_expr: $ => prec.right(PREC.TERNARY, seq(

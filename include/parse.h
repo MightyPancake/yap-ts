@@ -20,8 +20,18 @@ yap_block yap_parse_block(yap_source* src, TSNode node);
 yap_assignment yap_parse_assignment(yap_source* src, TSNode node);
 //statement
 yap_statement yap_parse_statement(yap_source* src, TSNode node);
+
+// yap_statement yap_parse_macro_statement(yap_source* src, TSNode node);
+yap_statement yap_parse_empty_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_expr_statement(yap_source* src, TSNode node);
+yap_statement yap_parse_if_statement(yap_source* src, TSNode node);
+yap_statement yap_parse_if_else_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_var_decl(yap_source* src, TSNode node);
+yap_statement yap_parse_return_statement(yap_source* src, TSNode node);
+yap_statement yap_parse_while_loop(yap_source* src, TSNode node);
+yap_statement yap_parse_for_loop(yap_source* src, TSNode node);
+yap_statement yap_parse_break_statement(yap_source* src, TSNode node);
+yap_statement yap_parse_continue_statement(yap_source* src, TSNode node);
 //expr
 yap_expr yap_parse_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_literal(yap_source* src, TSNode node);
