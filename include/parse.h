@@ -32,6 +32,7 @@ yap_statement yap_parse_while_loop(yap_source* src, TSNode node);
 yap_statement yap_parse_for_loop(yap_source* src, TSNode node);
 yap_statement yap_parse_break_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_continue_statement(yap_source* src, TSNode node);
+yap_statement yap_parse_block_statement(yap_source* src, TSNode node);
 //expr
 yap_expr yap_parse_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_literal(yap_source* src, TSNode node);

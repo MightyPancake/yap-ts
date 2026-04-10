@@ -196,19 +196,20 @@ module.exports = grammar({
       repeat($._statement),
       field("closing_bracket", '}'),
     ),
-    //def _statement
+    //def statement
     _statement: $ => choice(
+      $.block,
       $.macro_statement, //TODO
       $.var_decl,
       $.expr_statement, 
       $.if_statement,
       $.if_else_statement,
       $.empty_statement,
-      $.while_loop, //TODO
-      $.for_loop, //TODO
+      $.while_loop,
+      $.for_loop,
       $.return_statement,
-      $.break_statement, //TODO
-      $.continue_statement //TODO
+      $.break_statement,
+      $.continue_statement
     ),
     macro_statement: $ => $._macro_call,
     //def break_statement
@@ -230,11 +231,11 @@ module.exports = grammar({
     //def for_loop
     for_loop: $ => seq(
       field("for", "for"),
-      field("start", $._statement),
+      field("init", $._statement), //start
       field("comma1", ','),
-      field("condition", $._expr),
+      field("condition", $._expr), //condition
       field("comma2", ','),
-      field("step", $._statement), //TODO: C forces expression here... why?
+      field("update", $._expr), //step (this should be a statement, but C force expressions)
       field("body", $._statement)
     ),
     //def while_loop
@@ -352,28 +353,33 @@ module.exports = grammar({
     empty_statement: $ => ';',
     //def _expr
     _expr: $ => choice(
-      $.literal,
-      $.bin_expr,
+      $.literal, //TODO: Finish
+      $.bin_expr, //TODO: Finish
       $.identifier,
-      $.assignment,
-      $.at_op,
-      $.ternary_expr,
-      $.func_call,
-      $.block,
-      $.paren_expr,
-      $.cast_expr,
-      $.field_expr,
-      $._incr_expr,
-      $.method_access,
-      $.module_access,
-      $.comp_op,
-      $._macro_call,
-      $.comptime_context,
+      $.assignment, //TODO: Finish
+      $.at_op, //TODO
+      $.ternary_expr, //TODO
+      $.func_call, //TODO: Finish
+      $.block_expr, //TODO
+      $.paren_expr, //TODO
+      $.cast_expr, //TODO
+      $.field_expr, //TODO
+      $._incr_expr, //TODO
+      $.method_access, //TODO
+      $.module_access, //TODO
+      $.comp_op, //TODO
+      $._macro_call, //TODO
+      $.comptime_context, //TODO
     ),
+    block_expr: $ => prec.right(PREC.PAREN, seq(
+      field("open_bracket", '('),
+      field("block", $.block),
+      field("close_bracket", ')'),
+    )),
     //def paren_op
     paren_expr: $ => prec.right(PREC.PAREN, seq(
       field("open_bracket", '('),
-      fielded($, "_expr"),
+      field("expr", $._expr),
       field("close_bracket", ')'),
     )),
     //def cast_op

@@ -73,6 +73,14 @@ if (ts_node_null_or_error(VAR_NAME)) return yap_error_result(RET_TYP, MSG)
     return; \
   }
 
+#define yap_return_if_error_kind(RET_TYPE, KIND_TYPE, V, MSG) \
+  do { \
+    if ((V).kind == KIND_TYPE##_error) { \
+      yap_log(MSG); \
+      return yap_error_result(RET_TYPE, MSG); \
+    } \
+  } while(0)
+
 #define yap_node_field_by_name_var(NODE, NAME) yap_node_field_var(NAME##_node, NODE, #NAME)
 #define yap_node_field_by_name_var_check(NODE, NAME, RET_TYP, MSG) yap_node_field_var_check(NAME##_node, NODE, #NAME, RET_TYP, MSG)
 #define yap_node_field_by_name_var_check_push(NODE, NAME, RET_TYP, MSG, SRC) yap_node_field_var_check_push(NAME##_node, NODE, #NAME, RET_TYP, MSG, SRC)
