@@ -370,12 +370,22 @@ yap_block yap_parse_block(yap_source* src, TSNode node){
     uint32_t statement_count = ts_node_named_child_count(node); //Only count named children as statements
     yap_log("Parsing block: %u statements, type: %s, errors: %s", statement_count, ts_node_type(node), ts_node_null_or_error(node) ? "yes" : "no");
     darr(yap_statement) statements = yap_ctx_darr_new(ctx, yap_statement, .cap=statement_count, .len=0);
+    yap_ctx_push_new_scope(ctx); //Push a new scope for the block, this allows for variable declarations inside the block that do not affect the outer scope
+    // Parse statements
     for_ts_named_children(node, n){
         yap_log_node(src, "Statement", n);
         yap_statement st = yap_parse_statement(src, n);
+        if (st.kind == yap_statement_error){
+            yap_log("Error parsing statement in block, skipping");
+            return (yap_block){
+                .kind=yap_block_error,
+                .statements=NULL
+            };
+        }
         darr_push(statements, st);
         i++;
     }
+    yap_ctx_pop_scope(ctx); //Pop the block scope after parsing
     yap_log("Parsed %d statements in block", i);
     return (yap_block){
         .kind=yap_block_valid,
@@ -402,6 +412,14 @@ yap_statement yap_parse_statement(yap_source* src, TSNode node){
         ret = yap_parse_if_else_statement(src, node);
     }strus_case(typ, "while_loop"){
         ret = yap_parse_while_loop(src, node);
+    }strus_case(typ, "for_loop"){
+        ret = yap_parse_for_loop(src, node);
+    }strus_case(typ, "block"){
+        ret = yap_parse_block_statement(src, node);
+    }strus_case(typ, "break_statement"){
+        ret = yap_parse_break_statement(src, node);
+    }strus_case(typ, "continue_statement"){
+        ret = yap_parse_continue_statement(src, node);
     }else{
         yap_log_node(src, "Unhandled statement", node);
         yap_push_parse_error(src, node, "Unhandled statement");
@@ -410,22 +428,80 @@ yap_statement yap_parse_statement(yap_source* src, TSNode node){
     return ret;
 }
 
+yap_statement yap_parse_continue_statement(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    if (!yap_scope_in_loop(yap_ctx_current_scope(ctx))){
+        yap_push_parse_error(src, node, "Continue statement not inside a loop");
+        return yap_error_result(yap_statement, "Continue statement not inside a loop");
+    }
+    return (yap_statement){
+        .kind=yap_statement_continue
+    };
+}
+
+yap_statement yap_parse_break_statement(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    if (!yap_scope_in_loop(yap_ctx_current_scope(ctx))){
+        yap_push_parse_error(src, node, "Break statement not inside a loop");
+        return yap_error_result(yap_statement, "Break statement not inside a loop");
+    }
+    return (yap_statement){
+        .kind=yap_statement_break
+    };
+}
+
+yap_statement yap_parse_block_statement(yap_source* src, TSNode node){
+    yap_block block = yap_parse_block(src, node);
+    if (block.kind == yap_block_error){
+        return yap_error_result(yap_statement, "Invalid block statement");
+    }
+    return (yap_statement){
+        .kind=yap_statement_block,
+        .block=block
+    };
+}
+
+yap_statement yap_parse_for_loop(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_log("Parsing for loop");
+    yap_node_guard(node, yap_statement, "Invalid for loop", src);
+    yap_node_field_by_name_var_check_push(node, init, yap_statement, "Missing initializer in for loop", src);
+    yap_node_field_by_name_var_check_push(node, condition, yap_statement, "Missing condition in for loop", src);
+    yap_node_field_by_name_var_check_push(node, update, yap_statement, "Missing update in for loop", src);
+    yap_node_field_by_name_var_check_push(node, body, yap_statement, "Missing body in for loop", src);
+    yap_ctx_push_new_loop_scope(ctx); //Push a new loop scope for the for loop, this allows for break/continue statements inside the loop body to work correctly
+    yap_statement init = yap_parse_statement(src, init_node);
+    yap_return_if_error_kind(yap_statement, yap_statement, init, "Invalid initializer statement in for loop");
+    yap_expr condition = yap_parse_expr(src, condition_node);
+    yap_return_if_error_kind(yap_statement, yap_expr, condition, "Invalid condition expression in for loop");
+    yap_expr update = yap_parse_expr(src, update_node);
+    yap_return_if_error_kind(yap_statement, yap_expr, update, "Invalid update expression in for loop");
+    yap_statement body = yap_parse_statement(src, body_node);
+    yap_return_if_error_kind(yap_statement, yap_statement, body, "Invalid body statement in for loop");
+    yap_ctx_pop_scope(ctx); //Pop the loop scope after parsing the for loop
+    return (yap_statement){
+        .kind=yap_statement_for,
+        .for_stmt=(yap_for){
+            .init=yap_ctx_one_cpy(ctx, init),
+            .condition=condition,
+            .update=yap_ctx_one_cpy(ctx, update),
+            .body=yap_ctx_one_cpy(ctx, body)
+        }
+    };
+}
+
 yap_statement yap_parse_while_loop(yap_source* src, TSNode node){
     yap_ctx* ctx = src->ctx;
     yap_log("Parsing while loop");
     yap_node_guard(node, yap_statement, "Invalid while loop", src);
     yap_node_field_by_name_var_check_push(node, condition, yap_statement, "Missing condition in while loop", src);
     yap_node_field_by_name_var_check_push(node, body, yap_statement, "Missing body in while loop", src);
+    yap_ctx_push_new_loop_scope(ctx);
     yap_expr condition = yap_parse_expr(src, condition_node);
-    if (condition.kind == yap_expr_error){
-        yap_log("Invalid condition expression in while loop");
-        return yap_error_result(yap_statement, "Invalid condition expression in while loop");
-    }
+    yap_return_if_error_kind(yap_statement, yap_expr, condition, "Invalid condition expression in while loop");
     yap_statement body = yap_parse_statement(src, body_node);
-    if (body.kind == yap_statement_error){
-        yap_log("Invalid body statement in while loop");
-        return yap_error_result(yap_statement, "Invalid body statement in while loop");
-    }
+    yap_return_if_error_kind(yap_statement, yap_statement, body, "Invalid body statement in while loop");
+    yap_ctx_pop_scope(ctx);
     return (yap_statement){
         .kind=yap_statement_while,
         .while_stmt=(yap_while){
@@ -441,15 +517,9 @@ yap_statement yap_parse_if_statement(yap_source* src, TSNode node){
     yap_node_field_by_name_var_check_push(node, condition, yap_statement, "Missing condition in if statement", src);
     yap_node_field_by_name_var_check_push(node, then_branch, yap_statement, "Missing then branch in if statement", src);
     yap_expr condition = yap_parse_expr(src, condition_node);
-    if (condition.kind == yap_expr_error){
-        yap_log("Invalid condition expression in if statement");
-        return yap_error_result(yap_statement, "Invalid condition expression in if statement");
-    }
+    yap_return_if_error_kind(yap_statement, yap_expr, condition, "Invalid condition expression in if statement");
     yap_statement then_branch = yap_parse_statement(src, then_branch_node);
-    if (then_branch.kind == yap_statement_error){
-        yap_log("Invalid then branch statement in if statement");
-        return yap_error_result(yap_statement, "Invalid then branch statement in if statement");
-    }
+    yap_return_if_error_kind(yap_statement, yap_statement, then_branch, "Invalid then branch statement in if statement");
     return (yap_statement){
         .kind=yap_statement_if,
         .if_stmt=(yap_if){
@@ -466,20 +536,11 @@ yap_statement yap_parse_if_else_statement(yap_source* src, TSNode node){
     yap_node_field_by_name_var_check_push(node, then_branch, yap_statement, "Missing then branch in if-else statement", src);
     yap_node_field_by_name_var_check_push(node, else_branch, yap_statement, "Missing else branch in if-else statement", src);
     yap_expr condition = yap_parse_expr(src, condition_node);
-    if (condition.kind == yap_expr_error){
-        yap_log("Invalid condition expression in if-else statement");
-        return yap_error_result(yap_statement, "Invalid condition expression in if-else statement");
-    }
+    yap_return_if_error_kind(yap_statement, yap_expr, condition, "Invalid condition expression in if-else statement");
     yap_statement then_branch = yap_parse_statement(src, then_branch_node);
-    if (then_branch.kind == yap_statement_error){
-        yap_log("Invalid then branch statement in if-else statement");
-        return yap_error_result(yap_statement, "Invalid then branch statement in if-else statement");
-    }
+    yap_return_if_error_kind(yap_statement, yap_statement, then_branch, "Invalid then branch statement in if-else statement");
     yap_statement else_branch = yap_parse_statement(src, else_branch_node);
-    if (else_branch.kind == yap_statement_error){
-        yap_log("Invalid else branch statement in if-else statement");
-        return yap_error_result(yap_statement, "Invalid else branch statement in if-else statement");
-    }
+    yap_return_if_error_kind(yap_statement, yap_statement, else_branch, "Invalid else branch statement in if-else statement");
     return (yap_statement){
         .kind=yap_statement_if_else,
         .if_else_stmt=(yap_if_else){
@@ -514,10 +575,7 @@ yap_statement yap_parse_return_statement(yap_source* src, TSNode node){
     }
     yap_log("Parsing return statement with return value");
     yap_expr return_value = yap_parse_expr(src, return_value_node);
-    if (return_value.kind == yap_expr_error){
-        yap_log("Invalid return value expression in return statement");
-        return yap_error_result(yap_statement, "Invalid return value expression in return statement");
-    }
+    yap_return_if_error_kind(yap_statement, yap_expr, return_value, "Invalid return value expression in return statement");
     return (yap_statement){
         .kind=yap_statement_return,
         .return_stmt=(yap_return_statement){
@@ -536,10 +594,7 @@ yap_statement yap_parse_var_decl(yap_source* src, TSNode node){
     yap_log("Parsing variable declaration: %s := %s", name_node_val, value_node_val);
     //Get assignment value expression
     yap_expr value_expr = yap_parse_expr(src, value_node);
-    if (value_expr.kind == yap_expr_error){
-        yap_log("Invalid variable initializer expression");
-        return yap_error_result(yap_statement, "Invalid variable initializer expression");
-    }
+    yap_return_if_error_kind(yap_statement, yap_expr, value_expr, "Invalid variable initializer expression");
     //Get type from the initializer expression.
     yap_type_id var_type_id = yap_ctx_coerce_type_id_to_id(ctx, value_expr.type);
     char* name = yap_ctx_strus_cpy(ctx, name_node_val);
@@ -568,10 +623,7 @@ yap_statement yap_parse_expr_statement(yap_source* src, TSNode node){
         return yap_error_result(yap_statement, "Missing expression");
     }
     yap_expr expr = yap_parse_expr(src, expr_node);
-    if (expr.kind == yap_expr_error){
-        yap_log("Expression statement contains invalid expression");
-        return yap_error_result(yap_statement, "Invalid expression statement");
-    }
+    yap_return_if_error_kind(yap_statement, yap_expr, expr, "Invalid expression statement");
     return (yap_statement){
         .kind=yap_statement_expr,
         .expr=expr
@@ -649,10 +701,7 @@ yap_expr yap_parse_func_call(yap_source* src, TSNode node){
                 if (too_many_args) continue;
                 TSNode param_expr_node = ts_node_child(n, 0);
                 yap_expr param_expr = yap_parse_expr(src, param_expr_node);
-                if (param_expr.kind == yap_expr_error){
-                    yap_log("Invalid argument expression in function call");
-                    return yap_error_result(yap_expr, "Invalid argument expression in function call");
-                }
+                yap_return_if_error_kind(yap_expr, yap_expr, param_expr, "Invalid argument expression in function call");
                 //Check if original function type has enough parameters
                 if (darr_len(args) <= darr_len(params)){
                     too_many_args = true;
