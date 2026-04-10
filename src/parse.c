@@ -188,18 +188,16 @@ yap_decl yap_parse_fn_decl(yap_source *src, TSNode node){
     // Get function var from global scope (signature already registered in pass 1)
     const yap_var *func_var = yap_scope_get_var_recursive(yap_ctx_current_scope(ctx), name_node_val);
     if (!func_var){
-        yap_log("Function '%s' not found in scope, this should not happen", name_node_val);
-        yap_push_parse_error(src, node, "Function not found in scope");
-        return yap_error_result(yap_decl, "Function not found in scope");
+        if (darr_len(ctx->errors) == 0){
+            yap_push_parse_error(src, node, "Internal parser error: function '%s' was not registered in pass 1", name_node_val);
+        }else{
+            yap_log("Skipping function '%s' in pass 2 because declaration pass already reported errors", name_node_val);
+        }
+        return yap_error_result(yap_decl, "Skipped function declaration after previous errors");
     }
     
     // Get function type (already parsed in pass 1)
     yap_type* func_type_ptr = yap_ctx_get_type(ctx, func_var->type);
-    if (!func_type_ptr || func_type_ptr->kind != yap_type_func){
-        yap_log("Invalid function type for '%s'", name_node_val);
-        yap_push_parse_error(src, node, "Invalid function type");
-        return yap_error_result(yap_decl, "Invalid function type");
-    }
     
     yap_fn_type fn_type = func_type_ptr->func;
     
