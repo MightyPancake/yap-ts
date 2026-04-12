@@ -441,7 +441,7 @@ module.exports = grammar({
     //def blob_literal
     blob_literal: $ => seq(
       '[',
-      comma_sep($._param),
+      comma_sep($._param), //TODO: Rework
       ']'
     ),
     //def num_literal
@@ -498,7 +498,7 @@ module.exports = grammar({
       $.module_access,
       $.method_access,
     ),
-    //comptime_context
+    //def comptime_context
     comptime_context: $ => '(#)',
   }
 });
