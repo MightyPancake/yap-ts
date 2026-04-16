@@ -2,12 +2,12 @@
 #include "ts_yap.h"
 #include "types.h"
 
-yap_parser* yap_new_parser(){
+yap_parser* yap_new_parser(yap_ctx* ctx){
     yap_log("Creating new parser");
     TSParser *ts_parser = ts_parser_new();
     ts_parser_set_language(ts_parser, tree_sitter_yap());
     yap_parser* parser = mem_one_cpy(((yap_parser){
-         .ctx=yap_ctx_new(),
+         .ctx=ctx,
             .source_stack=darr_new(int),
          .parser=ts_parser,
          .tree=NULL,
