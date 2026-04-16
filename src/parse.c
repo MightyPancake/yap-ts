@@ -58,8 +58,8 @@ static uint32_t yap_collect_ts_syntax_errors(yap_source* src, TSNode node){
     return errors_found;
 }
 
-yap_ctx* yap_parse(yap_args args){
-    yap_parser* parser = yap_new_parser();
+yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
+    yap_parser* parser = yap_new_parser(ctx);
     if (darr_len(args.extra) == 0){
         printf("No source file provided\n");
         exit(1);

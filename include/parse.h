@@ -8,7 +8,7 @@ void yap_parse_top_level_declaration(yap_source* src, TSNode node);
 void yap_parse_top_level_func_decl(yap_source *src, TSNode node);
 
 // Main parsing functions
-yap_ctx* yap_parse(yap_args args);
+yap_ctx* yap_parse(yap_ctx* ctx, yap_args args);
 yap_source_code yap_parse_source_file(yap_source* src, TSNode node);
 // Declarations
 yap_decl yap_parse_decl(yap_source* src, TSNode node);

@@ -4,7 +4,7 @@
 #include "ts_yap.h"
 
 //Basic
-yap_parser* yap_new_parser();
+yap_parser* yap_new_parser(yap_ctx* ctx);
 void yap_free_parser(yap_parser* ps);
 
 //Sources
