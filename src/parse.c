@@ -223,6 +223,7 @@ yap_decl yap_parse_fn_decl(yap_source *src, TSNode node){
     return (yap_decl){
         .kind=yap_decl_func,
         .func_decl=(yap_func_decl){
+            .name=name_node_val,
             .args=args,
             .ret_typ=fn_type.return_type,
             .body=body
