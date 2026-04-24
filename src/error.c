@@ -25,7 +25,15 @@ void yap_helper_print_line(int line_no, bool is_error){
   err_printf(aesc_reset " ");
 }
 
+void yap_print_error_no_pos(yap_error err){
+  err_printf(aesc_red "Error: " aesc_reset "%s\n", err.msg);
+}
+
 void yap_print_error(yap_error err){
+  if (err.kind == yap_error_no_pos){
+    yap_print_error_no_pos(err);
+    return;
+  }
   yap_source* src = err.src;
   yap_code_pos start = err.range.start;
   yap_code_pos end = err.range.end;
