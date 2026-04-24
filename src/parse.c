@@ -605,7 +605,7 @@ yap_statement yap_parse_var_decl(yap_source* src, TSNode node){
         .kind=yap_statement_var_decl,
         .var_decl=(yap_var_decl){
             .var=var,
-            .expr=value_expr
+            .init=value_expr
         }
     };
     yap_log("Declared variable '%s' of type id %d", name, var_type_id);
@@ -653,9 +653,11 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
         yap_push_parse_error(src, node, "Invalid expression");
         ret = yap_ts_error_result_node(yap_expr, "Invalid expression", src, node);
     }
+    // Do additional checks
     if (ret.kind == yap_expr_assignment && ret.assignment.kind == yap_assignment_error){
-        return yap_error_result(yap_expr, "Invalid assignment expression");
+        ret = yap_error_result(yap_expr, "Invalid assignment expression");
     }
+    ret.range = yap_node_get_range(node);
     return ret;
 }
 
@@ -758,8 +760,8 @@ yap_expr yap_parse_var_access(yap_source* src, TSNode node){
         yap_push_parse_error(src, node, "Undefined variable");
         return yap_error_result(yap_expr, "Undefined variable");
     }
-    // (void)var;
     return (yap_expr){
+        .var_name=var->name,
         .kind=yap_expr_var,
         .type=var->type,
         .is_lvalue=true,
@@ -833,7 +835,7 @@ yap_expr yap_parse_bin_expr(yap_source* src, TSNode node){
     return (yap_expr){
         .kind=yap_expr_bin,
         .bin_expr=(yap_bin_expr){
-            .kind=op,
+            .op=op,
             .left=yap_ctx_one_cpy(ctx, left_expr),
             .right=yap_ctx_one_cpy(ctx, right_expr)
         },
