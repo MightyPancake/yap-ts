@@ -424,6 +424,7 @@ yap_statement yap_parse_statement(yap_source* src, TSNode node){
         yap_push_parse_error(src, node, "Unhandled statement");
         ret = yap_ts_error_result_node(yap_statement, "Unhandled statement", src, node);
     }
+    ret.range = yap_node_get_range(node);
     return ret;
 }
 
