@@ -222,8 +222,10 @@ module.exports = grammar({
         field("empty", ";")
       )
     ),
+    mut_qualifier: $ => "mut",
     //def var_decl
     var_decl: $ => seq(
+      optional(field("mut", $.mut_qualifier)),
       field("name", $.identifier),
       field("decl_op", ":="),
       field("value", $._expr)
@@ -351,9 +353,10 @@ module.exports = grammar({
     expr_statement: $ => prec.right(PREC.EXPR_STATEMENT, $._expr),
     //def empty_statement
     empty_statement: $ => ';',
+    //def expr
     //def _expr
     _expr: $ => choice(
-      $.literal, //TODO: Finish
+      $.literal, //TODO: Check for errors, finish literals
       $.bin_expr, //TODO: Finish
       $.identifier,
       $.assignment, //TODO: Finish
@@ -433,10 +436,27 @@ module.exports = grammar({
       $.string_literal,
       $.bool_literal,
       $.blob_literal, //blob literals can be cast to structs
+      $.func_literal,
       //TODO:
       // char
       // hex
       // binary
+    ),
+    //def func_literal
+    func_literal: $ => seq(
+      field("open_paren", '('),
+      optional(field("return_type", $.typ)),
+      field("fn", "fn"),
+      optional(field("func_literal_params", $.func_literal_params)),
+      field("close_paren", ')'),
+      field("body", $.block)
+    ),
+    //def func_literal_params
+    func_literal_params: $ => comma_sep($.func_literal_param),
+    //def func_literal_named_type
+    func_literal_param: $ => seq(
+      field("type", $.typ),
+      field("name", $.identifier)
     ),
     //def blob_literal
     blob_literal: $ => seq(

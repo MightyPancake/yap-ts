@@ -484,7 +484,7 @@ yap_statement yap_parse_for_loop(yap_source* src, TSNode node){
         .for_stmt=(yap_for){
             .init=yap_ctx_one_cpy(ctx, init),
             .condition=condition,
-            .update=yap_ctx_one_cpy(ctx, update),
+            .update=update,
             .body=yap_ctx_one_cpy(ctx, body)
         }
     };
@@ -591,16 +591,22 @@ yap_statement yap_parse_var_decl(yap_source* src, TSNode node){
     yap_node_field_by_name_var_check_push(node, value, yap_statement, "Missing variable value in declaration", src);
     yap_node_val_ctx(name_node);
     yap_node_val_ctx(value_node);
-    yap_log("Parsing variable declaration: %s := %s", name_node_val, value_node_val);
+    yap_node_field_var(mut_node, node, "mut");
+    bool is_mut = !ts_node_null_or_error(mut_node);
+    yap_log("Parsing variable declaration: %s := %s, is_mut: %s", name_node_val, value_node_val, is_mut ? "true" : "false");
     //Get assignment value expression
     yap_expr value_expr = yap_parse_expr(src, value_node);
     yap_return_if_error_kind(yap_statement, yap_expr, value_expr, "Invalid variable initializer expression");
     //Get type from the initializer expression.
-    yap_type_id var_type_id = yap_ctx_coerce_type_id_to_id(ctx, value_expr.type);
+    //TODO: Apply is_mut to the type
+    yap_type expr_type = *yap_ctx_get_type(ctx, value_expr.type);
+    yap_type var_type = yap_ctx_coerce_type(ctx, expr_type);
+    var_type.is_mut = is_mut;
+    yap_type_id var_type_id = yap_ctx_insert_type_if_not_exists(ctx, var_type);
     char* name = yap_ctx_strus_cpy(ctx, name_node_val);
     yap_var var = (yap_var){
         .name=name,
-        .type=var_type_id
+        .type=var_type_id,
     };
     yap_statement res = (yap_statement){
         .kind=yap_statement_var_decl,
@@ -859,9 +865,16 @@ yap_assignment yap_parse_assignment(yap_source* src, TSNode node){
         yap_log("Assignment expression contains invalid side(s)");
         return yap_error_result(yap_assignment, "Invalid assignment");
     }
+    //Check for lvalue on the left side of the assignment
     if (!left.is_lvalue){
         yap_push_parse_error(src, left_node, "Left side of assignment must be an lvalue");
         return yap_error_result(yap_assignment, "Left side of assignment must be an lvalue");
+    }
+    //Check for mutability on the left side of the assignment
+    yap_type *left_type = yap_ctx_get_type(src->ctx, left.type);
+    if (!left_type->is_mut){
+        yap_push_parse_error(src, left_node, "Cannot assign to an immutable value");
+        return yap_error_result(yap_assignment, "Cannot assign to an immutable value");
     }
     //TODO: Check if operator is supported and figure out the resulting type (e.g. for += operator)
     //TODO: Check if types are compatible for the assignment
