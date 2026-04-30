@@ -149,7 +149,8 @@ void yap_parse_top_level_func_decl(yap_source *src, TSNode node){
         .func=(yap_fn_type){
             .args=arg_type_ids,
             .return_type=return_type
-        }
+        },
+        .is_mut=true
     };
     //TODO: Register arg names/defaults in the global context!
     //Register the function variable in the current scope
@@ -342,7 +343,8 @@ yap_type_id yap_parse_function_type(yap_source* src, TSNode node){
         .func=(yap_fn_type){
             .args=arg_types,
             .return_type=return_type_id
-        }
+        },
+        .is_mut=true
     });
     if (!res_type_id) yap_push_parse_error(src, node, "Failed to create function type");
     return res_type_id;
@@ -354,7 +356,8 @@ yap_type_id yap_parse_pointer_type(yap_source* src, TSNode node){
     yap_type_id subtype_id = yap_parse_type(src, subtype_node);
     yap_type_id res_type_id = yap_ctx_insert_type_if_not_exists(ctx, (yap_type){
         .kind=yap_type_ptr,
-        .pointer_type=subtype_id
+        .pointer_type=subtype_id,
+        .is_mut=true
     });
     if (!res_type_id) yap_push_parse_error(src, node, "Failed to create pointer type");
     return res_type_id;
