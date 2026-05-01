@@ -63,6 +63,7 @@ module.exports = grammar({
     [$.macro_declaration, $.macro_statement, $._expr],
     [$.macro_statement, $._expr],
     [$.typ, $._expr],
+    [$.typ, $.var_declarator],
     [$.macro_type, $._expr],
   ],
   //Things to ignore
@@ -154,8 +155,14 @@ module.exports = grammar({
       $.identifier,
       $.module_access,
       $.function_type,
-      $.paren_type,
       $.macro_type,
+      $.paren_type,
+      $.const_type
+    ),
+    const: $ => "const",
+    const_type: $ => seq(
+      field("inner", $.typ),
+      field("const", $.const),
     ),
     paren_type: $ => seq(
       field("open_paren", '('),
@@ -164,8 +171,7 @@ module.exports = grammar({
     ),
     pointer_type: $ => prec.right(seq(
       field("subtyp", $.typ),
-      field("ptr_of", '@'),
-      repeat('@'),
+      field("ptr_of", '@')
     )),
     function_type: $ => seq(
       field("open_paren", '('),
@@ -222,13 +228,22 @@ module.exports = grammar({
         field("empty", ";")
       )
     ),
-    mut_qualifier: $ => "mut",
+    mut: $ => "mut",
     //def var_decl
     var_decl: $ => seq(
-      optional(field("mut", $.mut_qualifier)),
-      field("name", $.identifier),
+      field("var_declarator", $.var_declarator),
       field("decl_op", ":="),
       field("value", $._expr)
+    ),
+    //def mut_var_decl
+    var_declarator: $ => choice(
+      $.identifier,
+      $.const_var_declarator
+    ),
+    //def const_var_declarator
+    const_var_declarator: $ => seq(
+      field("var_declarator", $.var_declarator),
+      field("const", $.const)
     ),
     //def for_loop
     for_loop: $ => seq(
@@ -237,7 +252,7 @@ module.exports = grammar({
       field("comma1", ','),
       field("condition", $._expr), //condition
       field("comma2", ','),
-      field("update", $._expr), //step (this should be a statement, but C force expressions)
+      field("update", $._expr), //step (this should be a statement, but C forces expressions)
       field("body", $._statement)
     ),
     //def while_loop
@@ -360,11 +375,11 @@ module.exports = grammar({
       $.bin_expr, //TODO: Finish
       $.identifier,
       $.assignment, //TODO: Finish
-      $.at_op, //TODO
+      $.at_op, //TODO: Checks
       $.ternary_expr, //TODO
       $.func_call, //TODO: Finish
       $.block_expr, //TODO
-      $.paren_expr, //TODO
+      $.paren_expr, //TODO: Checks
       $.cast_expr, //TODO
       $.field_expr, //TODO
       $._incr_expr, //TODO
@@ -389,9 +404,9 @@ module.exports = grammar({
     cast_expr: $ =>
     prec.left(PREC.CAST,
       seq(
-        fielded($, "_expr"),
+        field("expr", $._expr),
         field("cast", ".("),
-        fielded($, "typ"),
+        field("type", $.typ),
         field("close_bracket", ')'),
       ),
     ),
@@ -403,7 +418,7 @@ module.exports = grammar({
     )),
     //def at_op
     at_op: $ => seq(
-      fielded($, "_expr"),
+      field("expr", $._expr),
       field("at_op", '@')
     ),
     //def _incr_expr

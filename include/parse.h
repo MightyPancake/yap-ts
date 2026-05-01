@@ -21,7 +21,8 @@ yap_assignment yap_parse_assignment(yap_source* src, TSNode node);
 //statement
 yap_statement yap_parse_statement(yap_source* src, TSNode node);
 
-// yap_statement yap_parse_macro_statement(yap_source* src, TSNode node);
+// yap_statement
+//yap_parse_macro_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_empty_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_expr_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_if_statement(yap_source* src, TSNode node);
@@ -33,12 +34,16 @@ yap_statement yap_parse_for_loop(yap_source* src, TSNode node);
 yap_statement yap_parse_break_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_continue_statement(yap_source* src, TSNode node);
 yap_statement yap_parse_block_statement(yap_source* src, TSNode node);
+
 //expr
 yap_expr yap_parse_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_literal(yap_source* src, TSNode node);
 yap_expr yap_parse_bin_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_var_access(yap_source* src, TSNode node);
 yap_expr yap_parse_func_call(yap_source* src, TSNode node);
+yap_expr yap_parse_cast_expr(yap_source* src, TSNode node);
+yap_expr yap_parse_at_op(yap_source* src, TSNode node);
+yap_expr yap_parse_paren_expr(yap_source* src, TSNode node);
 
 darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node);
 yap_func_arg yap_parse_fn_arg(yap_source* src, TSNode node);
