@@ -150,7 +150,7 @@ void yap_parse_top_level_func_decl(yap_source *src, TSNode node){
             .args=arg_type_ids,
             .return_type=return_type
         },
-        .is_mut=true
+        .is_const=false
     };
     //TODO: Register arg names/defaults in the global context!
     //Register the function variable in the current scope
@@ -344,7 +344,7 @@ yap_type_id yap_parse_function_type(yap_source* src, TSNode node){
             .args=arg_types,
             .return_type=return_type_id
         },
-        .is_mut=true
+        .is_const=false
     });
     if (!res_type_id) yap_push_parse_error(src, node, "Failed to create function type");
     return res_type_id;
@@ -357,7 +357,7 @@ yap_type_id yap_parse_pointer_type(yap_source* src, TSNode node){
     yap_type_id res_type_id = yap_ctx_insert_type_if_not_exists(ctx, (yap_type){
         .kind=yap_type_ptr,
         .pointer_type=subtype_id,
-        .is_mut=true
+        .is_const=false
     });
     if (!res_type_id) yap_push_parse_error(src, node, "Failed to create pointer type");
     return res_type_id;
@@ -378,7 +378,7 @@ yap_block yap_parse_block(yap_source* src, TSNode node){
         yap_log_node(src, "Statement", n);
         yap_statement st = yap_parse_statement(src, n);
         if (st.kind == yap_statement_error){
-            yap_log("Error parsing statement in block, skipping");
+            yap_push_parse_error(src, n, "Invalid statement in block");
             return (yap_block){
                 .kind=yap_block_error,
                 .statements=NULL
@@ -587,16 +587,41 @@ yap_statement yap_parse_return_statement(yap_source* src, TSNode node){
     };
 }
 
+yap_var_declarator yap_parse_var_declarator(yap_source* src, TSNode p_node){
+    TSNode node = ts_node_child(p_node, 0);
+    // yap_ctx* ctx = src->ctx;
+    const char* typ = ts_node_type(node);
+    strus_switch(typ, "identifier"){
+        yap_node_val_ctx(node);
+        return (yap_var_declarator){
+            .name=node_val,
+            .is_const=false,
+        };
+    }strus_case(typ, "const_var_declarator"){
+        yap_node_field_var(var_declarator_node, node, "var_declarator");
+        yap_var_declarator vd = yap_parse_var_declarator(src, var_declarator_node);
+        return (yap_var_declarator){
+            .name=vd.name,
+            .is_const=true,
+        };
+    }
+    yap_push_parse_error(src, p_node, "Invalid var declarator");
+    return (yap_var_declarator){
+        .name=NULL,
+        .is_const=false,
+    };
+}
+
 yap_statement yap_parse_var_decl(yap_source* src, TSNode node){
     yap_ctx* ctx = src->ctx;
     yap_node_guard(node, yap_statement, "Invalid variable declaration", src);
-    yap_node_field_by_name_var_check_push(node, name, yap_statement, "Missing variable name in declaration", src);
+    yap_node_field_by_name_var_check_push(node, var_declarator, yap_statement, "Missing declared variable in variable declaration", src);
     yap_node_field_by_name_var_check_push(node, value, yap_statement, "Missing variable value in declaration", src);
-    yap_node_val_ctx(name_node);
+    yap_var_declarator vd = yap_parse_var_declarator(src, var_declarator_node);
     yap_node_val_ctx(value_node);
-    yap_node_field_var(mut_node, node, "mut");
-    bool is_mut = !ts_node_null_or_error(mut_node);
-    yap_log("Parsing variable declaration: %s := %s, is_mut: %s", name_node_val, value_node_val, is_mut ? "true" : "false");
+    // yap_node_field_var(mut_node, node, "mut");
+    // bool is_mut = !ts_node_null_or_error(mut_node);
+    yap_log("Parsing variable declaration: %s := %s", vd.name, value_node_val);
     //Get assignment value expression
     yap_expr value_expr = yap_parse_expr(src, value_node);
     yap_return_if_error_kind(yap_statement, yap_expr, value_expr, "Invalid variable initializer expression");
@@ -604,11 +629,10 @@ yap_statement yap_parse_var_decl(yap_source* src, TSNode node){
     //TODO: Apply is_mut to the type
     yap_type expr_type = *yap_ctx_get_type(ctx, value_expr.type);
     yap_type var_type = yap_ctx_coerce_type(ctx, expr_type);
-    var_type.is_mut = is_mut;
+    var_type.is_const = var_type.is_const || vd.is_const; //Make it const if the underlying type was const of var declarator was const
     yap_type_id var_type_id = yap_ctx_insert_type_if_not_exists(ctx, var_type);
-    char* name = yap_ctx_strus_cpy(ctx, name_node_val);
     yap_var var = (yap_var){
-        .name=name,
+        .name=vd.name,
         .type=var_type_id,
     };
     yap_statement res = (yap_statement){
@@ -618,7 +642,7 @@ yap_statement yap_parse_var_decl(yap_source* src, TSNode node){
             .init=value_expr
         }
     };
-    yap_log("Declared variable '%s' of type id %d", name, var_type_id);
+    yap_log("Declared variable '%s' of type id %d", vd.name, var_type_id);
     yap_ctx_push_var(ctx, var);
     return res;
 }
@@ -644,7 +668,7 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
     const char* typ = ts_node_type(node);
     yap_log("Parsing expression of type '%s'", typ);
     // yap_node_val_ctx(node);
-    yap_expr ret = yap_error_result(yap_expr, "Invalid expression");
+    yap_expr ret;
     strus_switch(typ, "literal"){
         ret = yap_parse_literal(src, node);
     }strus_case(typ, "bin_expr"){
@@ -658,10 +682,16 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
         ret = yap_parse_var_access(src, node);
     }strus_case(typ, "func_call"){
         ret = yap_parse_func_call(src, node);
+    }strus_case(typ, "cast_expr"){
+        ret = yap_parse_cast_expr(src, node);
+    }strus_case(typ, "at_op"){
+        ret = yap_parse_at_op(src, node);
+    }strus_case(typ, "paren_expr"){
+        ret = yap_parse_paren_expr(src, node);
     }else{
         yap_log_node(src, "Unhandled expression", node);
-        yap_push_parse_error(src, node, "Invalid expression");
-        ret = yap_ts_error_result_node(yap_expr, "Invalid expression", src, node);
+        yap_push_parse_error(src, node, "Unhandled expression");
+        ret = yap_ts_error_result_node(yap_expr, "Unhandled expression", src, node);
     }
     // Do additional checks
     if (ret.kind == yap_expr_assignment && ret.assignment.kind == yap_assignment_error){
@@ -669,6 +699,53 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
     }
     ret.range = yap_node_get_range(node);
     return ret;
+}
+
+yap_expr yap_parse_paren_expr(yap_source* src, TSNode node){
+    yap_log("Parsing paren expression");
+    yap_ctx* ctx = src->ctx;
+    yap_node_field_by_name_var_check_push(node, expr, yap_expr, "Missing expression", src);
+    yap_expr expr = yap_parse_expr(src, expr_node);
+    yap_expr res = expr;
+    res.kind = yap_expr_paren;
+    res.subexpr = yap_ctx_one_cpy(ctx, expr);
+    return res;
+}
+
+yap_expr yap_parse_at_op(yap_source* src, TSNode node){
+    yap_log("Parsing 'at' operator");
+    yap_ctx* ctx = src->ctx;
+    yap_node_field_by_name_var_check_push(node, expr, yap_expr, "Missing expression to take address of", src);
+    yap_expr expr = yap_parse_expr(src, expr_node);
+    if (!expr.is_lvalue){
+        yap_push_parse_error(src, expr_node, "Cannot take address of non-lvalue");
+        return yap_error_result(yap_expr, "Cannot take address of non-lvalue");
+    }
+    //Construct pointer type
+    
+    return (yap_expr){
+        .kind=yap_expr_at_op,
+        .subexpr=yap_ctx_one_cpy(ctx, expr),
+        .type = yap_ctx_get_pointer_of_type_id(ctx, expr.type)
+    };
+}
+
+
+yap_expr yap_parse_cast_expr(yap_source* src, TSNode node){
+    yap_log("Parsing cast expression");
+    yap_ctx* ctx = src->ctx;
+    yap_node_field_by_name_var_check_push(node, expr, yap_expr, "Missing expression in type cast", src);
+    yap_node_field_by_name_var_check_push(node, type, yap_expr, "Missing type in type cast", src);
+    yap_type_id type = yap_parse_type(src, type_node);
+    yap_expr expr = yap_parse_expr(src, expr_node);
+    yap_expr res = (yap_expr){
+        .kind=yap_expr_cast,
+        .subexpr=yap_ctx_one_cpy(ctx, expr),
+        .type = type,
+        .is_lvalue=expr.is_lvalue,
+        .is_comptime=expr.is_comptime
+    };
+    return res;
 }
 
 yap_expr yap_parse_func_call(yap_source* src, TSNode node){
@@ -875,7 +952,7 @@ yap_assignment yap_parse_assignment(yap_source* src, TSNode node){
     }
     //Check for mutability on the left side of the assignment
     yap_type *left_type = yap_ctx_get_type(src->ctx, left.type);
-    if (!left_type->is_mut){
+    if (left_type->is_const){
         yap_push_parse_error(src, left_node, "Cannot assign to an immutable value");
         return yap_error_result(yap_assignment, "Cannot assign to an immutable value");
     }
