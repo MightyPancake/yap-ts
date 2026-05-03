@@ -44,6 +44,7 @@ yap_expr yap_parse_func_call(yap_source* src, TSNode node);
 yap_expr yap_parse_cast_expr(yap_source* src, TSNode node);
 yap_expr yap_parse_at_op(yap_source* src, TSNode node);
 yap_expr yap_parse_paren_expr(yap_source* src, TSNode node);
+yap_expr yap_parse_incr_expr(yap_source* src, TSNode node);
 
 darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node);
 yap_func_arg yap_parse_fn_arg(yap_source* src, TSNode node);

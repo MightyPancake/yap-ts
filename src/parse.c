@@ -688,6 +688,8 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
         ret = yap_parse_at_op(src, node);
     }strus_case(typ, "paren_expr"){
         ret = yap_parse_paren_expr(src, node);
+    }strus_case(typ, "incr_expr"){
+        ret = yap_parse_incr_expr(src, node);
     }else{
         yap_log_node(src, "Unhandled expression", node);
         yap_push_parse_error(src, node, "Unhandled expression");
@@ -699,6 +701,30 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
     }
     ret.range = yap_node_get_range(node);
     return ret;
+}
+
+yap_expr yap_parse_incr_expr(yap_source* src, TSNode node){
+    yap_log("Parsing increment/decrement expression");
+    yap_node_guard(node, yap_expr, "Invalid increment/decrement expression", src);
+    yap_node_field_by_name_var_check_push(node, expr, yap_expr, "Missing operand in increment/decrement expression", src);
+    yap_node_field_by_name_var_check_push(node, op, yap_expr, "Missing operator in increment/decrement expression", src);
+    const char* operator_str = yap_node_get_val_ctx(src, op_node);
+    yap_log("Operator in increment/decrement expression: %s", operator_str);
+    bool is_increment = strus_eq(operator_str, "++");
+    yap_expr expr = yap_parse_expr(src, expr_node);
+    if (expr.kind == yap_expr_error){
+        return yap_error_result(yap_expr, "Invalid operand expression in increment/decrement expression");
+    }
+    if (!expr.is_lvalue){
+        yap_push_parse_error(src, expr_node, "Operand of increment/decrement expression must be an lvalue");
+        return yap_error_result(yap_expr, "Operand of increment/decrement expression must be an lvalue");
+    }
+    return (yap_expr){
+        .kind=is_increment ? yap_expr_increment : yap_expr_decrement,
+        .subexpr=yap_ctx_one_cpy(src->ctx, expr),
+        .type=expr.type,
+        .is_lvalue=false
+    };
 }
 
 yap_expr yap_parse_paren_expr(yap_source* src, TSNode node){
