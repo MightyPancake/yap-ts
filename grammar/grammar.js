@@ -93,11 +93,95 @@ module.exports = grammar({
     comment: $ => $._comment,
     //def _defintion
     _declaration: $ => choice(
-      $.function_declaration,
-      $.macro_declaration,
-      // $.struct_declaration,
-      $._statement,
-      //enum 
+      $.function_declaration, //TODO: Checks/default params
+      $.macro_declaration, //TODO
+      $.named_type_declaration, //TODO
+      $._statement, //Still being done I guess
+    ),
+    //def type_declaration
+    named_type_declaration: $ => choice(
+      $.named_struct_declaration,
+      $.named_enum_declaration,
+      $.named_union_declaration,
+    ),
+    //def struct_declaration
+    named_struct_declaration: $ => seq(
+      field("struct", "struct"),
+      optional(field("name", $.identifier)),
+      field("opening_bracket", '{'),
+      field("fields", $.struct_fields),
+      field("closing_bracket", '}'),
+    ),
+    //def anonymous_struct_declaration
+    anonymous_struct_declaration: $ => seq(
+      field("struct", "struct"),
+      field("opening_bracket", '{'),
+      field("fields", $.struct_fields),
+      field("closing_bracket", '}'),
+    ),
+    //def struct_fields
+    struct_fields: $ => seq(
+      comma_sep($.struct_field),
+    ),
+    //def struct_field
+    struct_field: $ => seq(
+      field("type", $.declaration_type),
+      field("name", $.identifier),
+      field("default", optional(
+        seq(
+          field("assign", ':='),
+          field("value", $._expr)
+        )
+      )),
+    ),
+    declaration_type: $ => choice(
+      $.typ,
+      $.anonymous_struct_declaration,
+      $.anonymous_enum_declaration,
+      $.anonymous_union_declaration,
+    ),
+    named_enum_declaration: $ => seq(
+      field("enum", "enum"),
+      optional(field("name", $.identifier)),
+      field("opening_bracket", '{'),
+      field("variants", $.enum_variants),
+      field("closing_bracket", '}'),
+    ),
+    enum_variants: $ => comma_sep($.enum_variant),
+    enum_variant: $ => seq(
+      field("name", $.identifier),
+      field("value",
+        optional(
+          seq(
+            field("assign", ':='),
+            field("value", $._expr)
+          )
+        )
+      )
+    ),
+    anonymous_enum_declaration: $ => seq(
+      field("enum", "enum"),
+      field("opening_bracket", '{'),
+      field("variants", $.enum_variants),
+      field("closing_bracket", '}'),
+    ),
+    named_union_declaration: $ => seq(
+      field("union", "union"),
+      optional(field("name", $.identifier)),
+      field("opening_bracket", '{'),
+      field("variants", $.union_variants),
+      field("closing_bracket", '}'),
+    ),
+    union_variants: $ => comma_sep($.union_variant),
+    union_variant: $ => seq(
+      field("type", $.declaration_type),
+      field("name", $.identifier),
+    ),
+    anonymous_union_declaration: $ => seq(
+      field("union", "union"),
+      field("opening_bracket", '{'),
+      field("variants", $.union_variants),
+      field("closing_bracket", '}'),
     ),
     macro_declaration: $ => $._macro_call,
     //def function_declaration
@@ -138,7 +222,7 @@ module.exports = grammar({
     param: $ => seq(
       field("type", $.typ),
       field("name", $.identifier),
-    ),
+    ),    
     //def param_with_default
     default_param: $ => seq(
       field("param", $.param),
@@ -372,17 +456,17 @@ module.exports = grammar({
     //def _expr
     _expr: $ => choice(
       $.literal, //TODO: Check for errors, finish literals
-      $.bin_expr, //TODO: Finish
+      $.bin_expr, //TODO: Finish/checks
       $.identifier,
-      $.assignment, //TODO: Finish
+      $.assignment, //TODO: Finish/checks
       $.at_op, //TODO: Checks
       $.ternary_expr, //TODO
       $.func_call, //TODO: Finish
       $.block_expr, //TODO
-      $.paren_expr, //TODO: Checks
-      $.cast_expr, //TODO
+      $.paren_expr,
+      $.cast_expr, //TODO: Checks
       $.field_expr, //TODO
-      $._incr_expr, //TODO
+      $.incr_expr, //TODO: checks?
       $.method_access, //TODO
       $.module_access, //TODO
       $.comp_op, //TODO
@@ -421,12 +505,8 @@ module.exports = grammar({
       field("expr", $._expr),
       field("at_op", '@')
     ),
-    //def _incr_expr
-    _incr_expr: $ => choice(
-      $.postfix_incr_expr,
-    ),
-    //def postfix_incr_expr
-    postfix_incr_expr: $ => seq(
+    //def incr_expr
+    incr_expr: $ => seq(
       field("expr", $._expr),
       field("op", choice(
         "++",
