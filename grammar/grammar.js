@@ -95,25 +95,26 @@ module.exports = grammar({
     _declaration: $ => choice(
       $.function_declaration, //TODO: Checks/default params
       $.macro_declaration, //TODO
-      $.named_type_declaration, //TODO
+      $.type_declaration, //TODO
       $._statement, //Still being done I guess
     ),
     //def type_declaration
-    named_type_declaration: $ => choice(
-      $.named_struct_declaration,
-      $.named_enum_declaration,
-      $.named_union_declaration,
+    type_declaration: $ => choice(
+      $.struct_declaration,
+      $.enum_declaration,
+      $.union_declaration,
     ),
     //def struct_declaration
-    named_struct_declaration: $ => seq(
+    //TODO: Rename to struct_definition
+    struct_declaration: $ => seq(
       field("struct", "struct"),
-      optional(field("name", $.identifier)),
+      field("name", $.identifier),
       field("opening_bracket", '{'),
       field("fields", $.struct_fields),
       field("closing_bracket", '}'),
     ),
-    //def anonymous_struct_declaration
-    anonymous_struct_declaration: $ => seq(
+    //def anon_struct_type
+    anon_struct_type: $ => seq(
       field("struct", "struct"),
       field("opening_bracket", '{'),
       field("fields", $.struct_fields),
@@ -125,24 +126,24 @@ module.exports = grammar({
     ),
     //def struct_field
     struct_field: $ => seq(
-      field("type", $.declaration_type),
+      field("type", $._type_annotation),
       field("name", $.identifier),
-      field("default", optional(
+      field("default_node", optional(
         seq(
           field("assign", ':='),
           field("value", $._expr)
         )
       )),
     ),
-    declaration_type: $ => choice(
+    _type_annotation: $ => choice(
       $.typ,
-      $.anonymous_struct_declaration,
-      $.anonymous_enum_declaration,
-      $.anonymous_union_declaration,
+      $.anon_struct_type,
+      $.anon_enum_type,
+      $.anon_union_type,
     ),
-    named_enum_declaration: $ => seq(
+    enum_declaration: $ => seq(
       field("enum", "enum"),
-      optional(field("name", $.identifier)),
+      field("name", $.identifier),
       field("opening_bracket", '{'),
       field("variants", $.enum_variants),
       field("closing_bracket", '}'),
@@ -150,7 +151,7 @@ module.exports = grammar({
     enum_variants: $ => comma_sep($.enum_variant),
     enum_variant: $ => seq(
       field("name", $.identifier),
-      field("value",
+      field("value_node", 
         optional(
           seq(
             field("assign", ':='),
@@ -159,25 +160,25 @@ module.exports = grammar({
         )
       )
     ),
-    anonymous_enum_declaration: $ => seq(
+    anon_enum_type: $ => seq(
       field("enum", "enum"),
       field("opening_bracket", '{'),
       field("variants", $.enum_variants),
       field("closing_bracket", '}'),
     ),
-    named_union_declaration: $ => seq(
+    union_declaration: $ => seq(
       field("union", "union"),
-      optional(field("name", $.identifier)),
+      field("name", $.identifier),
       field("opening_bracket", '{'),
       field("variants", $.union_variants),
       field("closing_bracket", '}'),
     ),
     union_variants: $ => comma_sep($.union_variant),
     union_variant: $ => seq(
-      field("type", $.declaration_type),
+      field("type", $._type_annotation),
       field("name", $.identifier),
     ),
-    anonymous_union_declaration: $ => seq(
+    anon_union_type: $ => seq(
       field("union", "union"),
       field("opening_bracket", '{'),
       field("variants", $.union_variants),

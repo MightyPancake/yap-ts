@@ -78,12 +78,14 @@ void yap_parser_open_file(yap_parser* ps, char* path){
     yap_log("Opening file '%s'", path);
     char *content = NULL;
     size_t size = yap_read_file_to_string(path, &content);
+    //TODO: Refactor this into a new_source function
     yap_parser_push_source(ps, ((yap_source){
         .parent = NULL,
         .path=strus_copy(path),
         .sz=size,
         .content=content,
-        .ctx=ps->ctx
+        .ctx=ps->ctx,
+        .anon_id=0
     }));
 }
 
