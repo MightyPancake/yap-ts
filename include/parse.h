@@ -13,6 +13,10 @@ yap_source_code yap_parse_source_file(yap_source* src, TSNode node);
 // Declarations
 yap_decl yap_parse_decl(yap_source* src, TSNode node);
 yap_decl yap_parse_fn_decl(yap_source* src, TSNode node);
+yap_decl yap_parse_type_declaration(yap_source* src, TSNode node);
+yap_decl yap_parse_struct_declaration(yap_source* src, TSNode node);
+yap_decl yap_parse_enum_declaration(yap_source* src, TSNode node);
+yap_decl yap_parse_union_declaration(yap_source* src, TSNode node);
 
 // Block
 yap_block yap_parse_block(yap_source* src, TSNode node);
@@ -49,8 +53,27 @@ yap_expr yap_parse_incr_expr(yap_source* src, TSNode node);
 darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node);
 yap_func_arg yap_parse_fn_arg(yap_source* src, TSNode node);
 
+//Types
 yap_type_id yap_parse_type(yap_source* src, TSNode node);
+yap_type_id yap_parse_const_type(yap_source* src, TSNode node);
+yap_type_id yap_parse_paren_type(yap_source* src, TSNode node);
 yap_type_id yap_parse_pointer_type(yap_source* src, TSNode node);
 yap_type_id yap_parse_function_type(yap_source* src, TSNode node);
+// Anonymous types
+yap_type_id yap_parse_anon_struct_type(yap_source* src, TSNode node);
+yap_type_id yap_parse_anon_union_type(yap_source* src, TSNode node);
+yap_type_id yap_parse_anon_enum_type(yap_source* src, TSNode node);
+
+//Other
+yap_struct_field yap_parse_struct_field(yap_source* src, TSNode node);
+yap_enum_variant yap_parse_enum_variant(yap_source* src, TSNode node);
+yap_struct_field yap_parse_union_variant(yap_source* src, TSNode node);
+yap_type_id yap_parse_type_annotation(yap_source* src, TSNode node);
+darr(yap_struct_field) yap_parse_struct_fields(yap_source* src, TSNode fields_node);
+darr(yap_struct_field) yap_parse_union_variants(yap_source* src, TSNode variants_node);
+darr(yap_enum_variant) yap_parse_enum_variants(yap_source* src, TSNode variants_node);
+
+//Misc
+yap_type yap_empty_type(yap_type_kind kind);
 
 #endif //YAP_PARSE_H

@@ -163,16 +163,284 @@ void yap_parse_top_level_func_decl(yap_source *src, TSNode node){
 }
 
 yap_decl yap_parse_decl(yap_source *src, TSNode node){
+    yap_decl res = {.kind=yap_decl_error};
     yap_node_guard(node, yap_decl, "Invalid declaration", src);
     const char* typ = ts_node_type(node);
     yap_log("Parsing declaration: %s", typ);
     strus_switch(typ, "function_declaration"){
-        return yap_parse_fn_decl(src, node);
+        res = yap_parse_fn_decl(src, node);
+    }strus_case(typ, "type_declaration"){
+        res = yap_parse_type_declaration(src, node);
     }else{
         yap_log_node(src, "Unhandled declaration", node);
         yap_push_parse_error(src, node, "Unhandled declaration");
-        return yap_error_result(yap_decl, "Unhandled declaration");
+        res = yap_error_result(yap_decl, "Unhandled declaration");
     }
+    res.range = yap_node_get_range(node);
+    return res;
+}
+
+yap_decl yap_parse_type_declaration(yap_source* src, TSNode p_node){
+    yap_node_guard(p_node, yap_decl, "Invalid type declaration", src);
+    yap_log("Parsing type declaration of type '%s'", ts_node_type(p_node));
+    TSNode node = ts_node_child(p_node, 0);
+    const char* typ = ts_node_type(node);
+    yap_decl res = yap_error_result(yap_decl, "Invalid type declaration");
+    strus_switch(typ, "struct_declaration"){
+        res = yap_parse_struct_declaration(src, node);
+    }strus_case(typ, "enum_declaration"){
+        res = yap_parse_enum_declaration(src, node);
+    }strus_case(typ, "union_declaration"){
+        res = yap_parse_union_declaration(src, node);
+    }else{
+        yap_log_node(src, "Unhandled type declaration", node);
+        yap_push_parse_error(src, node, "Unhandled type declaration");
+    }
+    return res;
+}
+
+yap_decl yap_parse_struct_declaration(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_guard(node, yap_decl, "Invalid named struct declaration", src);
+    yap_node_field_by_name_var_check_push(node, name, yap_decl, "Missing name in named struct declaration", src);
+    yap_node_field_by_name_var_check_push(node, fields, yap_decl, "Missing fields in named struct declaration", src);
+    yap_node_val_ctx(name_node);
+    yap_log("Parsing named struct declaration named '%s'", name_node_val);
+    //Get field count and preallocate fields array
+    darr(yap_struct_field) fields = yap_parse_struct_fields(src, fields_node);
+    //Build the type and push it to the context to get its id
+    yap_struct_type struct_type = {
+        .fields=fields,
+        .c_name=name_node_val,
+        .name=name_node_val
+    };
+    yap_type t = yap_empty_type(yap_type_struct);
+    t.structure = struct_type;
+    yap_type_id id = yap_ctx_push_named_type(ctx, name_node_val, name_node_val, t);
+    return (yap_decl){
+        .kind=yap_decl_named_type,
+        .named_type_decl=(yap_named_type_decl){
+            .name=name_node_val,
+            .kind=yap_named_type_decl_valid,
+            .type_kind=yap_named_type_decl_struct,
+            .type_id=id
+        }
+    };
+}
+
+darr(yap_struct_field) yap_parse_struct_fields(yap_source* src, TSNode fields_node){
+    yap_ctx* ctx = src->ctx;
+    uint32_t field_count = ts_node_named_child_count(fields_node);
+    darr(yap_struct_field) fields = yap_ctx_darr_new(ctx, yap_struct_field, .cap=field_count, .len=0);
+    //Parse fields
+    for_ts_named_children(fields_node, field_node){
+        yap_struct_field field = yap_parse_struct_field(src, field_node);
+        if (field.kind == yap_struct_field_error){
+            yap_push_parse_error(src, field_node, "Invalid struct field in struct declaration");
+            return NULL;
+        }
+        darr_push(fields, field);
+    }
+    return fields;
+}
+
+darr(yap_struct_field) yap_parse_union_variants(yap_source* src, TSNode variants_node){
+    yap_ctx* ctx = src->ctx;
+    uint32_t variant_count = ts_node_named_child_count(variants_node);
+    darr(yap_struct_field) variants = yap_ctx_darr_new(ctx, yap_struct_field, .cap=variant_count, .len=0);
+    for_ts_named_children(variants_node, variant_node){
+        yap_struct_field variant = yap_parse_union_variant(src, variant_node);
+        if (variant.kind == yap_struct_field_error){
+            yap_push_parse_error(src, variant_node, "Invalid union variant in union declaration");
+            return NULL;
+        }
+        darr_push(variants, variant);
+    }
+    return variants;
+}
+
+darr(yap_enum_variant) yap_parse_enum_variants(yap_source* src, TSNode variants_node){
+    yap_ctx* ctx = src->ctx;
+    uint32_t variant_count = ts_node_named_child_count(variants_node);
+    darr(yap_enum_variant) variants = yap_ctx_darr_new(ctx, yap_enum_variant, .cap=variant_count, .len=0);
+    for_ts_named_children(variants_node, variant_node){
+        yap_enum_variant variant = yap_parse_enum_variant(src, variant_node);
+        if (!variant.name){
+            yap_push_parse_error(src, variant_node, "Invalid enum variant in enum declaration");
+            return NULL;
+        }
+        darr_push(variants, variant);
+    }
+    return variants;
+}
+
+yap_struct_field yap_parse_struct_field(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_log("Parsing struct field of type '%s'", ts_node_type(node));
+    yap_struct_field res = {.kind=yap_struct_field_error};
+    yap_node_field_var(type_node, node, "type");
+    if (ts_node_null_or_error(type_node)){
+        yap_push_parse_error(src, node, "Missing type in struct field");
+        return res;
+    }
+    yap_node_field_var(name_node, node, "name");
+    if (ts_node_null_or_error(name_node)){
+        yap_push_parse_error(src, node, "Missing name in struct field");
+        return res;
+    }
+    yap_node_field_var(default_value_node, node, "default_value");
+    yap_expr* default_expr = NULL;
+    if (!ts_node_null_or_error(default_value_node)){
+        yap_expr e = yap_parse_expr(src, default_value_node);
+        default_expr = yap_ctx_one_cpy(ctx, e);
+    }
+    yap_node_val_ctx(name_node);
+    yap_type_id type_id = yap_parse_type_annotation(src, type_node);
+    return (yap_struct_field){
+        .kind=yap_struct_field_valid,
+        .type=type_id,
+        .name=name_node_val,
+        .default_value=default_expr
+    };
+}
+
+yap_struct_field yap_parse_union_variant(yap_source* src, TSNode node){
+    return yap_parse_struct_field(src, node);
+}
+
+yap_enum_variant yap_parse_enum_variant(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_enum_variant res = {0};
+    yap_node_field_var(name_node, node, "name");
+    if (ts_node_null_or_error(name_node)){
+        yap_push_parse_error(src, node, "Missing name in enum variant");
+        return res;
+    }
+    yap_node_val_ctx(name_node);
+    res.name = yap_ctx_strus_cpy(ctx, name_node_val);
+    yap_node_field_var(value_node_node, node, "value_node");
+    if (!ts_node_null_or_error(value_node_node) && ts_node_named_child_count(value_node_node) > 0){
+        TSNode value_expr_node = ts_node_named_child(value_node_node, 0);
+        yap_expr value_expr = yap_parse_expr(src, value_expr_node);
+        if (value_expr.kind == yap_expr_error){
+            yap_push_parse_error(src, value_expr_node, "Invalid enum variant value expression");
+            return res;
+        }
+        res.value = yap_ctx_one_cpy(ctx, value_expr);
+    }
+    return res;
+}
+
+yap_type_id yap_parse_type_annotation(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    const char* typ = ts_node_type(node);
+    yap_log("Parsing type annotation of type '%s'", typ);
+    strus_switch(typ, "typ"){
+        return yap_parse_type(src, node);
+    }strus_case(typ, "anon_struct_type"){
+        return yap_parse_anon_struct_type(src, node);
+    }strus_case(typ, "anon_enum_type"){
+        return yap_parse_anon_enum_type(src, node);
+    }strus_case(typ, "anon_union_type"){
+        return yap_parse_anon_union_type(src, node);
+    }
+    return ctx->internal_error_type_id;
+}
+
+yap_type_id yap_parse_anon_struct_type(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_field_var(fields_node, node, "fields");
+    darr(yap_struct_field) fields = yap_parse_struct_fields(src, fields_node);
+    yap_anon_id anon_id = src->anon_id++;
+    char* c_name = yap_ctx_get_anon_name(ctx, "struct", anon_id);
+    yap_type t = yap_empty_type(yap_type_struct);
+    t.structure = (yap_struct_type){
+        .fields=fields,
+        .c_name=c_name,
+        .name=NULL
+    };
+    yap_type_id type_id = yap_ctx_insert_type_if_not_exists(ctx, t);
+    return type_id;
+}
+
+yap_type_id yap_parse_anon_union_type(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_field_var(variants_node, node, "variants");
+    darr(yap_struct_field) variants = yap_parse_union_variants(src, variants_node);
+    yap_anon_id anon_id = src->anon_id++;
+    char* c_name = yap_ctx_get_anon_name(ctx, "union", anon_id);
+    yap_type t = yap_empty_type(yap_type_union);
+    t.uni = (yap_union_type){
+        .variants=variants,
+        .c_name=c_name,
+        .name=NULL
+    };
+    return yap_ctx_insert_type_if_not_exists(ctx, t);
+}
+
+yap_type_id yap_parse_anon_enum_type(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_field_var(variants_node, node, "variants");
+    darr(yap_enum_variant) variants = yap_parse_enum_variants(src, variants_node);
+    yap_anon_id anon_id = src->anon_id++;
+    char* c_name = yap_ctx_get_anon_name(ctx, "enum", anon_id);
+    yap_type t = yap_empty_type(yap_type_enum);
+    t.enumeration = (yap_enum_type){
+        .variants=variants,
+        .c_name=c_name,
+        .name=NULL
+    };
+    return yap_ctx_insert_type_if_not_exists(ctx, t);
+}
+
+yap_decl yap_parse_enum_declaration(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_guard(node, yap_decl, "Invalid named enum declaration", src);
+    yap_node_field_by_name_var_check_push(node, name, yap_decl, "Missing name in named enum declaration", src);
+    yap_node_field_by_name_var_check_push(node, variants, yap_decl, "Missing variants in named enum declaration", src);
+    yap_node_val_ctx(name_node);
+    darr(yap_enum_variant) variants = yap_parse_enum_variants(src, variants_node);
+    yap_type t = yap_empty_type(yap_type_enum);
+    t.enumeration = (yap_enum_type){
+        .variants=variants,
+        .c_name=name_node_val,
+        .name=name_node_val
+    };
+    yap_type_id id = yap_ctx_push_named_type(ctx, name_node_val, name_node_val, t);
+    return (yap_decl){
+        .kind=yap_decl_named_type,
+        .named_type_decl=(yap_named_type_decl){
+            .name=name_node_val,
+            .kind=yap_named_type_decl_valid,
+            .type_kind=yap_named_type_decl_enum,
+            .type_id=id
+        }
+    };
+}
+
+yap_decl yap_parse_union_declaration(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_guard(node, yap_decl, "Invalid named union declaration", src);
+    yap_node_field_by_name_var_check_push(node, name, yap_decl, "Missing name in named union declaration", src);
+    yap_node_field_by_name_var_check_push(node, variants, yap_decl, "Missing variants in named union declaration", src);
+    yap_node_val_ctx(name_node);
+    darr(yap_struct_field) variants = yap_parse_union_variants(src, variants_node);
+    yap_type t = yap_empty_type(yap_type_union);
+    t.uni = (yap_union_type){
+        .variants=variants,
+        .c_name=name_node_val,
+        .name=name_node_val
+    };
+    yap_type_id id = yap_ctx_push_named_type(ctx, name_node_val, name_node_val, t);
+    return (yap_decl){
+        .kind=yap_decl_named_type,
+        .named_type_decl=(yap_named_type_decl){
+            .name=name_node_val,
+            .kind=yap_named_type_decl_valid,
+            .type_kind=yap_named_type_decl_union,
+            .type_id=id
+        }
+    };
 }
 
 yap_decl yap_parse_fn_decl(yap_source *src, TSNode node){
@@ -297,11 +565,48 @@ yap_type_id yap_parse_type(yap_source* src, TSNode p_node){
     }strus_case(typ, "function_type"){
         yap_log("Parsing function type");
         return yap_parse_function_type(src, node);
+    }strus_case(typ, "const_type"){
+        yap_log("Parsing const type");
+        return yap_parse_const_type(src, node);
+    }strus_case(typ, "paren_type"){
+        yap_log("Parsing parenthesized type");
+        return yap_parse_paren_type(src, node);
     }else{
         yap_log_node(src, "Unhandled type", node);
         yap_push_parse_error(src, node, "Unhandled type");
     }
     return 0; //Invalid type
+}
+
+yap_type_id yap_parse_const_type(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_field_by_name_var(node, inner);
+    if (ts_node_null_or_error(inner_node)){
+        yap_push_parse_error(src, node, "Missing inner type in const type");
+        return 0;
+    }
+    yap_type_id inner_type_id = yap_parse_type(src, inner_node);
+    if (!inner_type_id){
+        yap_push_parse_error(src, inner_node, "Invalid inner type in const type");
+        return 0;
+    }
+    yap_type* inner_type = yap_ctx_get_type(ctx, inner_type_id);
+    if (!inner_type){
+        yap_push_parse_error(src, inner_node, "Invalid inner type id in const type");
+        return 0;
+    }
+    yap_type const_type = *inner_type;
+    const_type.is_const = true;
+    return yap_ctx_insert_type_if_not_exists(ctx, const_type);
+}
+
+yap_type_id yap_parse_paren_type(yap_source* src, TSNode node){
+    yap_node_field_by_name_var(node, inner);
+    if (ts_node_null_or_error(inner_node)){
+        yap_push_parse_error(src, node, "Missing inner type in parenthesized type");
+        return 0;
+    }
+    return yap_parse_type(src, inner_node);
 }
 
 yap_type_id yap_parse_function_type(yap_source* src, TSNode node){
