@@ -95,7 +95,7 @@ module.exports = grammar({
     _declaration: $ => choice(
       $.function_declaration, //TODO: Checks/default params
       $.macro_declaration, //TODO
-      $.type_declaration, //TODO
+      $.type_declaration, //TODO: Finish? Forward / num declarations
       $._statement, //Still being done I guess
     ),
     //def type_declaration
@@ -313,14 +313,13 @@ module.exports = grammar({
         field("empty", ";")
       )
     ),
-    mut: $ => "mut",
     //def var_decl
     var_decl: $ => seq(
       field("var_declarator", $.var_declarator),
       field("decl_op", ":="),
       field("value", $._expr)
     ),
-    //def mut_var_decl
+    //def var_declarator
     var_declarator: $ => choice(
       $.identifier,
       $.const_var_declarator
@@ -392,11 +391,6 @@ module.exports = grammar({
       field("value", $._expr)
     ),
     //def bin_expr
-    // bin_expr: $ => prec.left(PREC, seq(
-    //   field("left", $._expr),
-    //   field("operator", $.binary_operator),
-    //   field("right", $._expr)
-    // )),
     bin_expr: $ => {
       const bin_ops = ['+', '-', '*', '/', '%'];
       return choice(...bin_ops.map((op) => {
@@ -461,18 +455,18 @@ module.exports = grammar({
       $.identifier,
       $.assignment, //TODO: Finish/checks
       $.at_op, //TODO: Checks
-      $.ternary_expr, //TODO
+      $.ternary_expr, //NOT IMPLEMENTED YET
       $.func_call, //TODO: Finish
-      $.block_expr, //TODO
+      $.block_expr, //NOT IMPLEMENTED YET
       $.paren_expr,
       $.cast_expr, //TODO: Checks
-      $.field_expr, //TODO
+      $.field_expr, //NOT IMPLEMENTED YET
       $.incr_expr, //TODO: checks?
-      $.method_access, //TODO
-      $.module_access, //TODO
-      $.comp_op, //TODO
-      $._macro_call, //TODO
-      $.comptime_context, //TODO
+      $.method_access, //NOT IMPLEMENTED YET
+      $.module_access, //NOT IMPLEMENTED YET
+      $.comp_op, //NOT IMPLEMENTED YET
+      $._macro_call, //NOT IMPLEMENTED YET
+      $.comptime_context, //NOT IMPLEMENTED YET
     ),
     block_expr: $ => prec.right(PREC.PAREN, seq(
       field("open_bracket", '('),
