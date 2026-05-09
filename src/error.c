@@ -34,9 +34,9 @@ void yap_print_error(yap_error err){
     yap_print_error_no_pos(err);
     return;
   }
-  yap_source* src = err.src;
-  yap_code_pos start = err.range.start;
-  yap_code_pos end = err.range.end;
+    yap_source* src = err.loc.src ? err.loc.src : err.src;
+    yap_code_pos start = err.loc.src ? err.loc.range.start : err.range.start;
+    yap_code_pos end = err.loc.src ? err.loc.range.end : err.range.end;
   //TODO: Implement
   // char* src_stack = strus_newf("In file: %s\n"err.src->path);
   err_printf(aesc_red "Error" aesc_reset);
@@ -108,11 +108,13 @@ void yap_print_error(yap_error err){
 }
 
 yap_error yap_node_error(yap_source* src, TSNode node, char* msg){
+  yap_code_range r = yap_node_get_range(node);
   return (yap_error){
     .kind=yap_error_pos,
     .msg=strus_copy(msg),
     .src=src,
-    .range=yap_node_get_range(node)
+    .range=r,
+    .loc=(yap_loc){.src=src, .range=r}
   };
 }
 

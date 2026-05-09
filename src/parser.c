@@ -95,10 +95,7 @@ void yap_parser_parse(yap_parser* ps){
     ps->tree = ts_parser_parse_string(ps->parser, NULL, src->content, src->sz);
     TSNode root = ts_tree_root_node(ps->tree);
     yap_parser_print_tree(ps);
-    //TODO: This should append to state/parser?
-    //TODO: Uncomment to actually parse. This is commented to not display errors
-    yap_source_code src_c = yap_parse_source_file(yap_parser_top_source(ps), root);
-    darr_push(ps->ctx->source_codes, src_c);
+    yap_parse_source_file(yap_parser_top_source(ps), root);
 }
 
 yap_source* yap_parser_top_source(yap_parser* ps){

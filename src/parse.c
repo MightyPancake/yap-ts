@@ -71,7 +71,7 @@ yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
     return ret;
 }
 
-yap_source_code yap_parse_source_file(yap_source* src, TSNode node){
+void yap_parse_source_file(yap_source* src, TSNode node){
     yap_ctx* ctx = src->ctx;
     uint32_t syntax_errors = yap_collect_ts_syntax_errors(src, node);
     if (syntax_errors > 0){
@@ -79,31 +79,25 @@ yap_source_code yap_parse_source_file(yap_source* src, TSNode node){
     }
     if (ts_node_null_or_error(node)){
         yap_push_parse_error(src, node, "Expected source file root");
-        return (yap_source_code){};
+        return;
     }
     const char* typ = ts_node_type(node);
     yap_log("Parsing source root of type '%s'", typ);
     if (strus_eq(typ, "source")){
-        uint32_t decl_count = 0;
-        for_ts_named_children(node, n) {
-            decl_count++;
-        }
-        yap_log("Source file has %u top-level declarations", decl_count);
-        darr(yap_decl) defs = yap_ctx_darr_new(ctx, yap_decl, .cap=decl_count, .len=0);
         //Pass 1: Collect all declarations and register them in the context, this allows for recursive declarations and mutual recursion. We only collect function declarations, other declarations are not registered in the context and can not be mutually recursive.
         for_ts_named_children(node, n){
             yap_parse_top_level_declaration(src, n);
         }
         //Pass 2: Do the actual parsing
         for_ts_named_children(node, n){
-            darr_push(defs, yap_parse_decl(src, n));
+            yap_decl decl = yap_parse_decl(src, n);
+            if (ctx->current_module){
+                darr_push(ctx->current_module->decls, decl);
+            }
         }
-        return (yap_source_code){
-            .declarations=defs
-        };
     }else{
         yap_push_parse_error(src, node, "Expected source file root");
-        return (yap_source_code){};
+        return;
     }
 }
 
@@ -176,7 +170,9 @@ yap_decl yap_parse_decl(yap_source *src, TSNode node){
         yap_push_parse_error(src, node, "Unhandled declaration");
         res = yap_error_result(yap_decl, "Unhandled declaration");
     }
-    res.range = yap_node_get_range(node);
+    res.loc.src = src;
+    res.loc.range = yap_node_get_range(node);
+    res.range = res.loc.range;
     return res;
 }
 
@@ -732,7 +728,9 @@ yap_statement yap_parse_statement(yap_source* src, TSNode node){
         yap_push_parse_error(src, node, "Unhandled statement");
         ret = yap_ts_error_result_node(yap_statement, "Unhandled statement", src, node);
     }
-    ret.range = yap_node_get_range(node);
+    ret.loc.src = src;
+    ret.loc.range = yap_node_get_range(node);
+    ret.range = ret.loc.range;
     return ret;
 }
 
@@ -1004,7 +1002,9 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
     if (ret.kind == yap_expr_assignment && ret.assignment.kind == yap_assignment_error){
         ret = yap_error_result(yap_expr, "Invalid assignment expression");
     }
-    ret.range = yap_node_get_range(node);
+    ret.loc.src = src;
+    ret.loc.range = yap_node_get_range(node);
+    ret.range = ret.loc.range;
     return ret;
 }
 
