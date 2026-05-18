@@ -267,20 +267,6 @@ module.exports = grammar({
     ),
     func_type_params: $ => comma_sep($.typ),
     macro_type: $ => $._macro_call,
-    // typ: $ => choice(
-    //   // field("primary", $.identifier),
-    //   field("pointer", seq(
-    //       field("ptr_of", '@'),
-      //       field("subtyp", $.typ),
-    //     )
-    //   ),
-    //   field("array", seq(
-    //       field("open_bracket", '['),
-    //       field("close_bracket", ']'),
-    //       field("subtyp", $.typ),
-    //     )
-    //   ),
-    // ),
     //def block
     block: $ => seq(
       field("opening_bracket", '{'),
@@ -363,10 +349,10 @@ module.exports = grammar({
     ternary_expr: $ => prec.right(PREC.TERNARY, seq(
       field("condition", $._expr),
       field("if", "?"),
-      field("expr1", $._expr),
+      field("then_expr", $._expr),
       // field("else", ":"),
       field("else", "else"),
-      field("expr2", $._expr)
+      field("else_expr", $._expr)
     )),
     //def func_call
     func_call: $ => prec.right(PREC.CALL, seq(

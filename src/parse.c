@@ -993,6 +993,8 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
         ret = yap_parse_paren_expr(src, node);
     }strus_case(typ, "incr_expr"){
         ret = yap_parse_incr_expr(src, node);
+    }strus_case(typ, "ternary_expr"){
+        ret = yap_parse_ternary_expr(src, node);
     }else{
         yap_log_node(src, "Unhandled expression", node);
         yap_push_parse_error(src, node, "Unhandled expression");
@@ -1006,6 +1008,53 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
     ret.loc.range = yap_node_get_range(node);
     ret.range = ret.loc.range;
     return ret;
+}
+
+yap_expr yap_parse_ternary_expr(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_log("Parsing ternary expression");
+    yap_node_guard(node, yap_expr, "Invalid ternary expression", src);
+    yap_node_field_by_name_var_check_push(node, condition, yap_expr, "Missing condition in ternary expression", src);
+    yap_node_field_by_name_var_check_push(node, then_expr, yap_expr, "Missing then branch in ternary expression", src);
+    yap_node_field_by_name_var_check_push(node, else_expr, yap_expr, "Missing else branch in ternary expression", src);
+    yap_expr condition = yap_parse_expr(src, condition_node);
+    if (condition.kind == yap_expr_error){
+        return yap_error_result(yap_expr, "Invalid condition expression in ternary expression");
+    }
+    // if (!yap_ctx_type_is_bool(src->ctx, condition.type)){
+    //     yap_push_parse_error(src, condition_node, "Condition expression in ternary operator must be of type bool");
+    //     return yap_error_result(yap_expr, "Condition expression in ternary operator must be of type bool");
+    // }
+    yap_expr then_expr = yap_parse_expr(src, then_expr_node);
+    if (then_expr.kind == yap_expr_error){
+        return yap_error_result(yap_expr, "Invalid then branch expression in ternary expression");
+    }
+    yap_expr else_expr = yap_parse_expr(src, else_expr_node);
+    if (else_expr.kind == yap_expr_error){
+        return yap_error_result(yap_expr, "Invalid else branch expression in ternary expression");
+    }
+    //Coerce then and else branches to a common type
+    //TODO: Implement yap_ctx_find_common_type and use it here to find the common type of then and else branches, emit error if they are incompatible
+    yap_type_id common_type = yap_ctx_find_common_type(src->ctx, then_expr.type, else_expr.type);
+    if (!common_type){
+        char* then_type_str = yap_ctx_type_id_to_string(src->ctx, then_expr.type);
+        char* else_type_str = yap_ctx_type_id_to_string(src->ctx, else_expr.type);
+        yap_push_parse_error(src, node, "Then and else branches of ternary operator have incompatible types: '%s' and '%s'", then_type_str, else_type_str);
+        free(then_type_str);
+        free(else_type_str);
+        return yap_error_result(yap_expr, "Then and else branches of ternary operator have incompatible types");
+    }
+    return (yap_expr){
+        .kind=yap_expr_ternary,
+        .ternary=(yap_ternary_expr){
+            .condition=yap_ctx_one_cpy(ctx, condition),
+            .then_expr=yap_ctx_one_cpy(ctx, then_expr),
+            .else_expr=yap_ctx_one_cpy(ctx, else_expr)
+        },
+        .type=common_type,
+        .is_lvalue=false,
+        .is_comptime=condition.is_comptime && then_expr.is_comptime && else_expr.is_comptime
+    };
 }
 
 yap_expr yap_parse_incr_expr(yap_source* src, TSNode node){
