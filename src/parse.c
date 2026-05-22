@@ -995,6 +995,8 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
         ret = yap_parse_incr_expr(src, node);
     }strus_case(typ, "ternary_expr"){
         ret = yap_parse_ternary_expr(src, node);
+    }strus_case(typ, "member_access"){
+        ret = yap_parse_member_access(src, node);
     }else{
         yap_log_node(src, "Unhandled expression", node);
         yap_push_parse_error(src, node, "Unhandled expression");
@@ -1008,6 +1010,43 @@ yap_expr yap_parse_expr(yap_source* src, TSNode node){
     ret.loc.range = yap_node_get_range(node);
     ret.range = ret.loc.range;
     return ret;
+}
+
+yap_expr yap_parse_member_access(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_log("Parsing member access expression");
+    yap_node_guard(node, yap_expr, "Invalid member access expression", src);
+    yap_node_field_by_name_var_check_push(node, object, yap_expr, "Missing object in member access expression", src);
+    yap_node_field_by_name_var_check_push(node, member, yap_expr, "Missing member name in member access expression", src);
+    yap_expr object = yap_parse_expr(src, object_node);
+    if (object.kind == yap_expr_error){
+        return yap_error_result(yap_expr, "Invalid object expression in member access");
+    }
+    yap_type *object_type = yap_ctx_get_type(src->ctx, object.type);
+    if (!object_type){
+        yap_push_parse_error(src, object_node, "Unknown type of object in member access expression");
+        return yap_error_result(yap_expr, "Unknown type of object in member access expression");
+    }
+    if (object_type->kind != yap_type_struct && object_type->kind != yap_type_union){
+            yap_push_parse_error(src, object_node, "Type of object in member access expression must be a struct or union");
+            return yap_error_result(yap_expr, "Type of object in member access expression must be a struct or union");
+    }
+    yap_node_val_ctx(member_node);
+    yap_type_id member_type_id = yap_ctx_find_member_type(src->ctx, object.type, member_node_val);
+    if (member_type_id == ctx->internal_error_type_id){ //Member not found
+        yap_push_parse_error(src, member_node, "Type '%s' does not have a member named '%s'", yap_ctx_type_id_to_string(src->ctx, object.type), member_node_val);
+        return yap_error_result(yap_expr, "Type does not have a member with the given name in member access expression");
+    }
+    return (yap_expr){
+        .kind=yap_expr_member_access,
+        .member_access=(yap_member_access){
+            .object=yap_ctx_one_cpy(ctx, object),
+            .member=member_node_val
+        },
+        .type=member_type_id,
+        .is_lvalue=object.is_lvalue,
+        .is_comptime=object.is_comptime
+    };
 }
 
 yap_expr yap_parse_ternary_expr(yap_source* src, TSNode node){
@@ -1256,6 +1295,9 @@ yap_expr yap_parse_literal(yap_source* src, TSNode p_node){
     strus_switch(typ, "num_literal"){
         kind = yap_literal_numerical;
         res.type = ctx->untyped_int_type_id;
+    // }strus_case(typ, "blob_literal"){
+    //     kind = yap_literal_blob;
+    //     res.type = ctx->blob_type_id; //Blobs have to be cast!
     }else{
         yap_log_node(src, "Unhandled literal", node);
         yap_push_parse_error(src, node, "Unhandled literal type");
