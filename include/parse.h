@@ -54,6 +54,7 @@ yap_expr yap_parse_member_access(yap_source* src, TSNode node);
 
 darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node);
 yap_func_arg yap_parse_fn_arg(yap_source* src, TSNode node);
+yap_func_arg yap_parse_fn_arg_from_var_decl(yap_source* src, TSNode node);
 
 //Types
 yap_type_id yap_parse_type(yap_source* src, TSNode node);

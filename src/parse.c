@@ -114,7 +114,8 @@ void yap_parse_top_level_func_decl(yap_source *src, TSNode node){
     yap_node_untyped_guard(node, "Invalid function declaration", src);
     yap_node_field_by_name_var_untyped_check(node, name, "Missing function name", src);
     yap_node_field_by_name_var_untyped_check(node, body, "Missing function body", src);
-    yap_node_field_by_name_var_untyped_check(node, return_type, "Missing return type", src);
+    yap_node_field_var(return_type_node, node, "return_type");
+    yap_node_field_var(return_var_decl_node, node, "return_var_decl");
     yap_node_field_var(args_node, node, "args");
     // yap_node_field_by_name_var_untyped_check(node, args, "Missing function arguments", src);
     // LOGGING
@@ -124,10 +125,20 @@ void yap_parse_top_level_func_decl(yap_source *src, TSNode node){
     yap_log("Parsing function named %s at %s", name_node_val, pos_str);
     free(pos_str);
     // END LOGGING
-    yap_type_id return_type = yap_parse_type(src, return_type_node);
-    if (return_type == 0){
-        yap_push_parse_error(src, return_type_node, "Invalid return type in function declaration");
-        return;
+    yap_type_id return_type = ctx->void_type_id;
+    if (!ts_node_null_or_error(return_type_node)){
+        return_type = yap_parse_type(src, return_type_node);
+        if (return_type == 0){
+            yap_push_parse_error(src, return_type_node, "Invalid return type in function declaration");
+            return;
+        }
+    }else if (!ts_node_null_or_error(return_var_decl_node)){
+        yap_func_arg return_arg = yap_parse_fn_arg_from_var_decl(src, return_var_decl_node);
+        if (return_arg.kind != yap_func_arg_valid){
+            yap_push_parse_error(src, return_var_decl_node, "Invalid named return declaration in function declaration");
+            return;
+        }
+        return_type = return_arg.type;
     }
     darr(yap_func_arg) args = yap_parse_fn_args(src, args_node);
     //TODO: Check if arguments are valid
@@ -446,6 +457,7 @@ yap_decl yap_parse_fn_decl(yap_source *src, TSNode node){
     // yap_node_field_by_name_var_check_push(node, args, yap_decl, "Missing function arguments", src);
     yap_node_field_var(args_node, node, "args");
     yap_node_field_by_name_var_check_push(node, body, yap_decl, "Missing function body", src);
+    yap_node_field_var(return_var_decl_node, node, "return_var_decl");
     
     yap_node_val_ctx(name_node);
     yap_log("Parsing function body for '%s'", name_node_val);
@@ -478,6 +490,15 @@ yap_decl yap_parse_fn_decl(yap_source *src, TSNode node){
         };
         yap_scope_set_var(func_scope, var);
     }
+    if (!ts_node_null_or_error(return_var_decl_node)){
+        yap_func_arg return_arg = yap_parse_fn_arg_from_var_decl(src, return_var_decl_node);
+        if (return_arg.kind == yap_func_arg_valid){
+            yap_scope_set_var(func_scope, (yap_var){
+                .name=return_arg.name,
+                .type=return_arg.type
+            });
+        }
+    }
     
     // Parse body
     yap_block body = yap_parse_block(src, body_node);
@@ -496,6 +517,11 @@ yap_decl yap_parse_fn_decl(yap_source *src, TSNode node){
     };
 }
 
+darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node);
+
+// Forward declaration for var_decl -> func arg converter
+yap_func_arg yap_parse_fn_arg_from_var_decl(yap_source* src, TSNode node);
+
 darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node){
     yap_ctx* ctx = src->ctx;
     if (ts_node_is_null(node)){
@@ -505,12 +531,17 @@ darr(yap_func_arg) yap_parse_fn_args(yap_source* src, TSNode node){
     yap_log("Parsing %u function arguments", param_count);
     darr(yap_func_arg) args = yap_ctx_darr_new(ctx, yap_func_arg, .cap=param_count, .len=0);
     for_ts_named_children(node, n){
-        if (!strus_eq(ts_node_type(n), "func_decl_arg")){
-            yap_log_node(src, "Expected parameter in function parameter list", n);
-            yap_push_parse_error(src, n, "Expected parameter in function parameter list");
+        const char* nt = ts_node_type(n);
+        if (strus_eq(nt, "func_decl_arg")){
+            darr_push(args, yap_parse_fn_arg(src, n));
             continue;
         }
-        darr_push(args, yap_parse_fn_arg(src, n));
+        if (strus_eq(nt, "var_decl")){
+            darr_push(args, yap_parse_fn_arg_from_var_decl(src, n));
+            continue;
+        }
+        yap_log_node(src, "Expected parameter in function parameter list", n);
+        yap_push_parse_error(src, n, "Expected parameter in function parameter list");
     }
     return args;
 }
@@ -528,6 +559,53 @@ yap_func_arg yap_parse_fn_arg(yap_source* src, TSNode node){
         .type=yap_parse_type(src, type_node),
         .default_value=(yap_expr){0}
     };
+}
+
+yap_func_arg yap_parse_fn_arg_from_var_decl(yap_source* src, TSNode node){
+    yap_node_guard(node, yap_func_arg, "Invalid function argument (var_decl)", src);
+    TSNode inner = ts_node_child(node, 0);
+    if (ts_node_null_or_error(inner)){
+        yap_push_parse_error(src, node, "Empty var_decl in function parameter list");
+        return yap_error_result(yap_func_arg, "Empty var_decl");
+    }
+    const char* it = ts_node_type(inner);
+    yap_ctx* ctx = src->ctx;
+    if (strus_eq(it, "explicit_type_var_decl")){
+        yap_node_field_by_name_var_check_push(inner, type, yap_func_arg, "Missing argument type", src);
+        yap_node_field_by_name_var_check_push(inner, name, yap_func_arg, "Missing argument name", src);
+        yap_node_val_ctx(name_node);
+        yap_type_id tid = yap_parse_type(src, type_node);
+        if (!tid) return yap_error_result(yap_func_arg, "Invalid argument type");
+        // optional default
+        yap_node_field_by_name_var(inner, value);
+        yap_expr def = (yap_expr){0};
+        if (!ts_node_null_or_error(value_node)){
+            def = yap_parse_expr(src, value_node);
+            yap_return_if_error_kind(yap_func_arg, yap_expr, def, "Invalid default value expression for argument");
+        }
+        return (yap_func_arg){
+            .kind=yap_func_arg_valid,
+            .name=name_node_val,
+            .type=tid,
+            .default_value=def
+        };
+    }else if (strus_eq(it, "infered_type_var_decl")){
+        yap_node_field_by_name_var_check_push(inner, name, yap_func_arg, "Missing argument name", src);
+        yap_node_field_by_name_var_check_push(inner, value, yap_func_arg, "Missing argument default value", src);
+        yap_node_val_ctx(name_node);
+        yap_expr def = yap_parse_expr(src, value_node);
+        yap_return_if_error_kind(yap_func_arg, yap_expr, def, "Invalid default value expression for argument");
+        // Use an untyped placeholder for inferred param types; will be resolved later
+        yap_type_id tid = ctx->untyped_int_type_id ? ctx->untyped_int_type_id : ctx->int_type_id;
+        return (yap_func_arg){
+            .kind=yap_func_arg_valid,
+            .name=name_node_val,
+            .type=tid,
+            .default_value=def
+        };
+    }
+    yap_push_parse_error(src, node, "Unsupported var_decl form in function parameter");
+    return yap_error_result(yap_func_arg, "Unsupported var_decl form");
 }
 
 yap_type_id yap_parse_type(yap_source* src, TSNode p_node){
@@ -918,34 +996,68 @@ yap_var_declarator yap_parse_var_declarator(yap_source* src, TSNode p_node){
 yap_statement yap_parse_var_decl(yap_source* src, TSNode node){
     yap_ctx* ctx = src->ctx;
     yap_node_guard(node, yap_statement, "Invalid variable declaration", src);
-    yap_node_field_by_name_var_check_push(node, var_declarator, yap_statement, "Missing declared variable in variable declaration", src);
-    yap_node_field_by_name_var_check_push(node, value, yap_statement, "Missing variable value in declaration", src);
-    yap_var_declarator vd = yap_parse_var_declarator(src, var_declarator_node);
-    yap_node_val_ctx(value_node);
-    // yap_node_field_var(mut_node, node, "mut");
-    // bool is_mut = !ts_node_null_or_error(mut_node);
-    yap_log("Parsing variable declaration: %s := %s", vd.name, value_node_val);
-    //Get assignment value expression
-    yap_expr value_expr = yap_parse_expr(src, value_node);
-    yap_return_if_error_kind(yap_statement, yap_expr, value_expr, "Invalid variable initializer expression");
-    //Get type from the initializer expression.
-    //TODO: Apply is_mut to the type
-    yap_type expr_type = *yap_ctx_get_type(ctx, value_expr.type);
-    yap_type var_type = yap_ctx_coerce_type(ctx, expr_type);
-    var_type.is_const = var_type.is_const || vd.is_const; //Make it const if the underlying type was const of var declarator was const
-    yap_type_id var_type_id = yap_ctx_insert_type_if_not_exists(ctx, var_type);
-    yap_var var = (yap_var){
-        .name=vd.name,
-        .type=var_type_id,
-    };
+    TSNode decl_node = ts_node_child(node, 0);
+    if (ts_node_null_or_error(decl_node)){
+        yap_push_parse_error(src, node, "Missing variable declaration payload");
+        return yap_error_result(yap_statement, "Missing variable declaration payload");
+    }
+    const char* decl_typ = ts_node_type(decl_node);
+    yap_node_val_ctx(decl_node);
+    yap_log("Parsing variable declaration node type '%s' value '%s'", decl_typ, decl_node_val);
+    yap_var var = {0};
+    yap_expr value_expr = {0};
+    bool has_init = false;
+    if (strus_eq(decl_typ, "infered_type_var_decl")){
+        yap_node_field_by_name_var_check_push(decl_node, name, yap_statement, "Missing declared variable in variable declaration", src);
+        yap_node_field_by_name_var_check_push(decl_node, value, yap_statement, "Missing variable value in declaration", src);
+        yap_node_val_ctx(name_node);
+        yap_node_val_ctx(value_node);
+        yap_log("Parsing variable declaration: %s := %s", name_node_val, value_node_val);
+        value_expr = yap_parse_expr(src, value_node);
+        yap_return_if_error_kind(yap_statement, yap_expr, value_expr, "Invalid variable initializer expression");
+        yap_type expr_type = *yap_ctx_get_type(ctx, value_expr.type);
+        yap_type var_type = yap_ctx_coerce_type(ctx, expr_type);
+        var = (yap_var){
+            .name=name_node_val,
+            .type=yap_ctx_insert_type_if_not_exists(ctx, var_type),
+        };
+        has_init = true;
+    }else if (strus_eq(decl_typ, "explicit_type_var_decl")){
+        yap_node_field_by_name_var_check_push(decl_node, type, yap_statement, "Missing declared variable type in variable declaration", src);
+        yap_node_field_by_name_var_check_push(decl_node, name, yap_statement, "Missing declared variable in variable declaration", src);
+        yap_node_val_ctx(name_node);
+        yap_type_id declared_type = yap_parse_type(src, type_node);
+        if (!declared_type){
+            yap_push_parse_error(src, type_node, "Invalid declared variable type in variable declaration");
+            return yap_error_result(yap_statement, "Invalid declared variable type");
+        }
+        yap_node_field_var(value_node, decl_node, "value");
+        var = (yap_var){
+            .name=name_node_val,
+            .type=declared_type,
+        };
+        if (!ts_node_null_or_error(value_node)){
+            yap_node_val_ctx(value_node);
+            yap_log("Parsing variable declaration: %s : %s := %s", yap_node_get_val_ctx(src, type_node), name_node_val, value_node_val);
+            value_expr = yap_parse_expr(src, value_node);
+            yap_return_if_error_kind(yap_statement, yap_expr, value_expr, "Invalid variable initializer expression");
+            has_init = true;
+        }else{
+            yap_log("Parsing uninitialized variable declaration: %s : %s", yap_node_get_val_ctx(src, type_node), name_node_val);
+        }
+    }else{
+        yap_push_parse_error(src, decl_node, "Unsupported variable declaration form");
+        return yap_error_result(yap_statement, "Unsupported variable declaration form");
+    }
     yap_statement res = (yap_statement){
         .kind=yap_statement_var_decl,
         .var_decl=(yap_var_decl){
             .var=var,
+            .has_init=has_init,
             .init=value_expr
         }
     };
-    yap_log("Declared variable '%s' of type id %d", vd.name, var_type_id);
+    yap_log("Declared variable '%s' of type id %d", var.name, var.type);
     yap_ctx_push_var(ctx, var);
     return res;
 }
@@ -957,6 +1069,29 @@ yap_statement yap_parse_expr_statement(yap_source* src, TSNode node){
     if (ts_node_null_or_error(expr_node)){
         yap_push_parse_error(src, node, "Missing expression in statement");
         return yap_error_result(yap_statement, "Missing expression");
+    }
+    if (strus_eq(ts_node_type(expr_node), "method_access")){
+        yap_node_field_var(caller_node, expr_node, "caller");
+        yap_node_field_var(name_node, expr_node, "name");
+        if (!ts_node_null_or_error(caller_node) && !ts_node_null_or_error(name_node) && strus_eq(ts_node_type(caller_node), "identifier")){
+            yap_node_val_ctx(caller_node);
+            yap_type_id type_id = yap_ctx_get_type_id_by_name(src->ctx, caller_node_val);
+            if (type_id){
+                yap_node_val_ctx(name_node);
+                yap_log("Reinterpreting expression statement as uninitialized variable declaration: %s:%s", caller_node_val, name_node_val);
+                return (yap_statement){
+                    .kind=yap_statement_var_decl,
+                    .var_decl=(yap_var_decl){
+                        .var=(yap_var){
+                            .name=name_node_val,
+                            .type=type_id,
+                        },
+                        .has_init=false,
+                        .init=(yap_expr){0},
+                    }
+                };
+            }
+        }
     }
     yap_expr expr = yap_parse_expr(src, expr_node);
     yap_return_if_error_kind(yap_statement, yap_expr, expr, "Invalid expression statement");
