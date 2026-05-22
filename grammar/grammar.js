@@ -191,10 +191,11 @@ module.exports = grammar({
       field("fn", "fn"),
       optional(
         field("subject", seq(
-        field("type", $.typ),
-        ":"
+          field("type", $.typ),
+          ":"
+          )
         )
-      )),
+      ),
       field("name", $.identifier),
       "(",
       field("args", optional($.func_decl_args)),
@@ -441,12 +442,12 @@ module.exports = grammar({
       $.identifier,
       $.assignment, //TODO: Finish/checks
       $.at_op, //TODO: Checks
-      $.ternary_expr, //NOT IMPLEMENTED YET
+      $.ternary_expr,
       $.func_call, //TODO: Finish
       $.block_expr, //NOT IMPLEMENTED YET
       $.paren_expr,
       $.cast_expr, //TODO: Checks
-      $.field_expr, //NOT IMPLEMENTED YET
+      $.member_access, //NOT IMPLEMENTED YET
       $.incr_expr, //TODO: checks?
       $.method_access, //NOT IMPLEMENTED YET
       $.module_access, //NOT IMPLEMENTED YET
@@ -475,11 +476,11 @@ module.exports = grammar({
         field("close_bracket", ')'),
       ),
     ),
-    //def field_expr
-    field_expr: $ => prec.left(PREC.FIELD, seq(
-      fielded($, "_expr"),
+    //def member_access
+    member_access: $ => prec.left(PREC.FIELD, seq(
+      field("object", $._expr),
       field("dot", '.'),
-      field("field", $.identifier),
+      field("member", $.identifier),
     )),
     //def at_op
     at_op: $ => seq(
@@ -511,7 +512,7 @@ module.exports = grammar({
       $.num_literal,
       $.string_literal,
       $.bool_literal,
-      $.blob_literal, //blob literals can be cast to structs
+      $.blob_literal, //blob literals can be cast to structs and arrays alike
       $.func_literal,
       //TODO:
       // char
