@@ -41,6 +41,8 @@ const PREC = {
   ASSIGN: 0,            // =, +=, -=, *=, /=, %=, ?= 
   TERNARY: 1,           // cond ? val_if_true : val_if_false
   EXPR_STATEMENT: 1,    // expr being a statement
+    // Precedence for variable declarations (one higher than EXPR_STATEMENT)
+    VAR_DECL: 2,
   COMPARISON: 2,    // expr == expr, etc.
   '+': 3,               // +
   '-': 3,               // -
@@ -63,7 +65,8 @@ module.exports = grammar({
     [$.macro_declaration, $.macro_statement, $._expr],
     [$.macro_statement, $._expr],
     [$.typ, $._expr],
-    [$.typ, $.var_declarator],
+    [$.function_type, $.func_literal],
+    // [$.typ, $.var_declarator],
     [$.macro_type, $._expr],
   ],
   //Things to ignore
@@ -125,15 +128,18 @@ module.exports = grammar({
       comma_sep($.struct_field),
     ),
     //def struct_field
-    struct_field: $ => seq(
-      field("type", $._type_annotation),
-      field("name", $.identifier),
-      field("default_node", optional(
-        seq(
-          field("assign", ':='),
-          field("value", $._expr)
-        )
-      )),
+    // A struct field can be either a full var_decl (explicit typed decl),
+    // or an explicit anon-type form: `type name [ := expr ]`.
+    struct_field: $ => choice(
+      $.var_decl,
+      seq(
+        field("type", $._type_annotation),
+        field("name", $.identifier),
+        optional(seq(
+          field("assign", ":="),
+          field("default_value", $._expr)
+        ))
+      )
     ),
     _type_annotation: $ => choice(
       $.typ,
@@ -187,7 +193,6 @@ module.exports = grammar({
     macro_declaration: $ => $._macro_call,
     //def function_declaration
     function_declaration: $ => seq(
-      field("return_type", $.typ),
       field("fn", "fn"),
       optional(
         field("subject", seq(
@@ -200,41 +205,19 @@ module.exports = grammar({
       "(",
       field("args", optional($.func_decl_args)),
       ")",
+      optional(
+        seq(
+          field("return_type_op", "->"),
+          choice(
+            field("return_type", $.typ),
+            field("return_var_decl", $.var_decl)
+          )
+        )
+      ),
       field("body", $.block)
     ),
     //def func_decl_args
-    func_decl_args: $ => comma_sep($.func_decl_arg),
-    //def func_decl_arg
-    func_decl_arg: $ => seq(
-      field("type", $.typ),
-      field("name", $.identifier),
-      optional(
-        seq(
-          field("default_op", ':='),
-          field("default_value", $._expr)
-        )
-      )
-    ),
-    //def _param
-    _param: $ => choice(
-      $.param,
-      $.default_param,
-    ),
-    //def named_param
-    param: $ => seq(
-      field("type", $.typ),
-      field("name", $.identifier),
-    ),    
-    //def param_with_default
-    default_param: $ => seq(
-      field("param", $.param),
-      field("equals", "="),
-      field("value", $._expr)
-    ),
-    //def params
-    params: $ => comma_sep(
-      $._param
-    ),
+    func_decl_args: $ => comma_sep($.var_decl),
     //def typ
     typ: $ => choice(
       $.pointer_type,
@@ -301,20 +284,27 @@ module.exports = grammar({
       )
     ),
     //def var_decl
-    var_decl: $ => seq(
-      field("var_declarator", $.var_declarator),
-      field("decl_op", ":="),
+    var_decl: $ => prec.right(PREC.VAR_DECL, seq(
+      choice(
+        $.infered_type_var_decl,
+        $.explicit_type_var_decl
+      )
+    )),
+    infered_type_var_decl: $ => seq(
+      field("name", $.identifier),
+      field("assign", ":="),
       field("value", $._expr)
     ),
-    //def var_declarator
-    var_declarator: $ => choice(
-      $.identifier,
-      $.const_var_declarator
-    ),
-    //def const_var_declarator
-    const_var_declarator: $ => seq(
-      field("var_declarator", $.var_declarator),
-      field("const", $.const)
+    explicit_type_var_decl: $ => seq(
+      field("type", $.typ),
+      ":",
+      field("name", $.identifier),
+      optional(
+        seq(
+           field("assign", ":="),
+           field("value", $._expr)
+        )
+      )
     ),
     //def for_loop
     for_loop: $ => seq(
