@@ -228,8 +228,7 @@ yap_decl yap_parse_struct_declaration(yap_source* src, TSNode node){
         .kind=yap_decl_named_type,
         .named_type_decl=(yap_named_type_decl){
             .name=name_node_val,
-            .kind=yap_named_type_decl_valid,
-            .type_kind=yap_named_type_decl_struct,
+            .kind=yap_named_type_decl_struct,
             .type_id=id
         }
     };
@@ -418,8 +417,7 @@ yap_decl yap_parse_enum_declaration(yap_source* src, TSNode node){
         .kind=yap_decl_named_type,
         .named_type_decl=(yap_named_type_decl){
             .name=name_node_val,
-            .kind=yap_named_type_decl_valid,
-            .type_kind=yap_named_type_decl_enum,
+            .kind=yap_named_type_decl_enum,
             .type_id=id
         }
     };
@@ -443,8 +441,7 @@ yap_decl yap_parse_union_declaration(yap_source* src, TSNode node){
         .kind=yap_decl_named_type,
         .named_type_decl=(yap_named_type_decl){
             .name=name_node_val,
-            .kind=yap_named_type_decl_valid,
-            .type_kind=yap_named_type_decl_union,
+            .kind=yap_named_type_decl_union,
             .type_id=id
         }
     };
