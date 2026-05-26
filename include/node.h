@@ -96,6 +96,7 @@ if (ts_node_null_or_error(VAR_NAME)) return yap_error_result(RET_TYP, MSG)
     return; \
   }
 
+#define yap_ts_node_loc(NODE, SRC) (yap_loc){ .src=SRC, .range=yap_node_get_range(NODE) }
 #define ts_node_null_or_error(N) (ts_node_is_null(N) || ts_node_is_error(N))
 
 void yap_print_tree(TSNode root, int depth);
