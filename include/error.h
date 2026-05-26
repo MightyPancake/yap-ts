@@ -1,7 +1,7 @@
 #ifndef YAP_TS_ERROR_H
 #define YAP_TS_ERROR_H
 #include <stdarg.h>
-#include "yap/all.h"
+#include "ts_yap.h"
 
 #define yap_ts_error_result_node(T, MSG, SRC, NODE) yap_error_range_result(T, MSG, SRC, yap_node_get_range(NODE))
 

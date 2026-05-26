@@ -85,6 +85,7 @@ void yap_parser_open_file(yap_parser* ps, char* path){
         .sz=size,
         .content=content,
         .ctx=ps->ctx,
+        .ast=NULL,
         .anon_id=0
     }));
 }
