@@ -14,8 +14,13 @@ darr(yap_func_arg_node) yap_parse_func_args(yap_source* src, TSNode node);
 yap_func_arg_node yap_parse_func_arg(yap_source* src, TSNode node);
 
 //Expressions
-yap_literal_node yap_parse_literal(yap_source* src, TSNode node);
 yap_expr_node yap_parse_expr(yap_source* src, TSNode node);
+//Expressions - literals
+yap_literal_node yap_parse_literal(yap_source* src, TSNode node);
+yap_literal_node yap_parse_num_literal(yap_source* src, TSNode node);
+yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node);
+yap_literal_node yap_parse_bool_literal(yap_source* src, TSNode node);
+yap_literal_node yap_parse_blob_literal(yap_source* src, TSNode node);
 
 //Statements
 yap_statement_node yap_parse_statement(yap_source* src, TSNode node);
@@ -29,6 +34,9 @@ yap_decl_node yap_parse_type_declaration(yap_source* src, TSNode node);
 yap_decl_node yap_parse_struct_decl(yap_source* src, TSNode node);
 yap_decl_node yap_parse_enum_decl(yap_source* src, TSNode node);
 yap_decl_node yap_parse_union_decl(yap_source* src, TSNode node);
+yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node);
+yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node);
+yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node);
 
 //Other
 bool yap_identifier_node_is_valid(yap_identifier_node node);

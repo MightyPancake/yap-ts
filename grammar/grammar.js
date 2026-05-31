@@ -96,10 +96,43 @@ module.exports = grammar({
     comment: $ => $._comment,
     //def _defintion
     _declaration: $ => choice(
-      $.function_declaration, //TODO: Checks/default params
-      $.macro_declaration, //TODO
-      $.type_declaration, //TODO: Finish? Forward / num declarations
-      $._statement, //Still being done I guess
+      $.module_declaration, //TODO: Creates a module
+      $.module_import_declaration, //TODO: Imports a module
+      $.file_import_declaration, //TODO: Imports a file
+      $.function_declaration, //TODO: Checks/default params. Can emit to global or another module
+      $.macro_declaration, //TODO: Implement. Can emit to global or another module
+      $.type_declaration, //TODO: Finish? Forward / num declarations. Can emit to global or another module
+      $._statement, //Still being done I guess. Emits into current module.
+    ),
+    //def module_declaration
+    module_declaration: $ => seq(
+      field("module", "module"),
+      field("name", $.identifier),
+      field("opening_bracket", '{'),
+      optional(field("module_info", $.module_info)),
+      field("closing_bracket", '}'),
+    ),
+    //def module_info
+    module_info: $ => comma_sep($.module_info_item),
+    //def module_info_item
+    module_info_item: $ => seq(
+      field("key", $.identifier),
+      field("assign", ":"),
+      field("value", choice(
+        $.string_literal,
+        $.num_literal,
+        $.bool_literal,
+      ))
+    ),
+    //def module_import_declaration
+    module_import_declaration: $ => seq(
+      field("import", "import"),
+      field("name", $.identifier)
+    ),
+    //def file_import_declaration
+    file_import_declaration: $ => seq(
+      field("import", "import"),
+      field("path", $.string_literal)
     ),
     //def type_declaration
     type_declaration: $ => choice(
@@ -570,7 +603,7 @@ module.exports = grammar({
     //def param_macro_call
     param_macro_call: $ => seq(
       field("caller", $.macro_caller),
-      field("macro_op", "#("),
+      field("macro_call_op", "#("),
       repeat($.macro_param),
       field("close_paren", ')')
     ),

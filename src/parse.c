@@ -1,9 +1,4 @@
-#include "parse.h"
-#include "error.h"
-#include "node.h"
-#include "tree_sitter/api.h"
 #include "ts_yap.h"
-#include "utils/utils.h"
 #include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
@@ -58,6 +53,7 @@ static void yap_log_node(yap_source* src, TSNode node, const char* fmt, ...){
 }
 
 yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
+    yap_log("\n\nPhase 1: Parsing\n");
     yap_parser* parser = yap_new_parser(ctx);
     if (darr_len(args.extra) == 0){
         printf("No source file provided\n");
@@ -70,13 +66,13 @@ yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
     return ret;
 }
 
-static TSNode yap_parse_first_child(TSNode node){
+TSNode yap_parse_first_child(TSNode node){
     TSNode child = ts_node_child(node, 0);
     if (ts_node_null_or_error(child)) child = ts_node_named_child(node, 0);
     return child;
 }
 
-static darr(yap_var_decl_node) yap_parse_struct_fields(yap_source* src, TSNode fields_node){
+darr(yap_var_decl_node) yap_parse_struct_fields(yap_source* src, TSNode fields_node){
     yap_ctx* ctx = src->ctx;
     if (ts_node_null_or_error(fields_node)) return yap_ctx_darr_new(ctx, yap_var_decl_node, .cap=0, .len=0);
     uint32_t count = ts_node_named_child_count(fields_node);
@@ -107,7 +103,7 @@ static darr(yap_var_decl_node) yap_parse_struct_fields(yap_source* src, TSNode f
     return fields;
 }
 
-static darr(yap_enum_variant_node) yap_parse_enum_variants(yap_source* src, TSNode variants_node){
+darr(yap_enum_variant_node) yap_parse_enum_variants(yap_source* src, TSNode variants_node){
     yap_ctx* ctx = src->ctx;
     if (ts_node_null_or_error(variants_node)) return yap_ctx_darr_new(ctx, yap_enum_variant_node, .cap=0, .len=0);
     uint32_t count = ts_node_named_child_count(variants_node);
@@ -134,7 +130,7 @@ static darr(yap_enum_variant_node) yap_parse_enum_variants(yap_source* src, TSNo
     return variants;
 }
 
-static darr(yap_var_decl_node) yap_parse_union_variants(yap_source* src, TSNode variants_node){
+darr(yap_var_decl_node) yap_parse_union_variants(yap_source* src, TSNode variants_node){
     yap_ctx* ctx = src->ctx;
     if (ts_node_null_or_error(variants_node)) return yap_ctx_darr_new(ctx, yap_var_decl_node, .cap=0, .len=0);
     uint32_t count = ts_node_named_child_count(variants_node);
@@ -209,6 +205,12 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
         res = yap_parse_union_decl(src, node);
     }strus_case(typ, "type_declaration"){
         res = yap_parse_type_declaration(src, node);
+    }strus_case(typ, "module_import_declaration"){
+        res = yap_parse_module_import_decl(src, node);
+    }strus_case(typ, "file_import_declaration"){
+        res = yap_parse_file_import_decl(src, node);
+    }strus_case(typ, "module_declaration"){
+        res = yap_parse_module_decl(src, node);
     }else{
         yap_log_node(src, node, "Unhandled declaration");
         yap_push_parse_error(src, node, "Unhandled declaration");
@@ -217,6 +219,85 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
     res.loc.src = src;
     res.loc.range = yap_node_get_range(node);
     return res;
+}
+
+yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
+    yap_decl_node res = {.kind=yap_decl_error};
+    if (ts_node_null_or_error(node)){
+        yap_push_parse_error(src, node, "Invalid module import declaration");
+        res.err = yap_node_error(src, node, "Invalid module import declaration");
+        return res;
+    }
+    yap_log_node(src, node, "Parsing module import declaration");
+
+    yap_node_field_by_name_var(node, name);
+    if (ts_node_null_or_error(name_node)){
+        yap_push_parse_error(src, node, "Missing module name in module import declaration");
+        res.err = yap_node_error(src, node, "Missing module name in module import declaration");
+        return res;
+    }
+    yap_identifier_node module_name = yap_parse_identifier(src, name_node);
+    yap_log("Module import declaration: module='%s'", module_name.value ? module_name.value : "(anon)");
+    return (yap_decl_node){
+        .kind=yap_decl_module_import,
+        .module_import={
+            .module_name=module_name,
+            .loc=yap_ts_node_loc(node, src),
+        }
+    };
+}
+
+yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
+    yap_decl_node res = {.kind=yap_decl_error};
+    if (ts_node_null_or_error(node)){
+        yap_push_parse_error(src, node, "Invalid module declaration");
+        res.err = yap_node_error(src, node, "Invalid module declaration");
+        return res;
+    }
+    yap_log_node(src, node, "Parsing module declaration");
+
+    yap_node_field_by_name_var(node, name);
+    if (ts_node_null_or_error(name_node)){
+        yap_push_parse_error(src, node, "Missing module name in module declaration");
+        res.err = yap_node_error(src, node, "Missing module name in module declaration");
+        return res;
+    }
+    yap_identifier_node module_name = yap_parse_identifier(src, name_node);
+    yap_log("Module declaration: name='%s'", module_name.value ? module_name.value : "(anon)");
+    return (yap_decl_node){
+        .kind=yap_decl_module_decl,
+        .module_decl={
+            .name=module_name,
+            .loc=yap_ts_node_loc(node, src),
+        }
+    };
+}
+
+yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node){
+    yap_decl_node res = {.kind=yap_decl_error};
+    if (ts_node_null_or_error(node)){
+        yap_push_parse_error(src, node, "Invalid file import declaration");
+        res.err = yap_node_error(src, node, "Invalid file import declaration");
+        return res;
+    }
+    yap_log_node(src, node, "Parsing file import declaration");
+
+    yap_node_field_by_name_var(node, path);
+    if (ts_node_null_or_error(path_node)){
+        yap_push_parse_error(src, node, "Missing file path in file import declaration");
+        res.err = yap_node_error(src, node, "Missing file path in file import declaration");
+        return res;
+    }
+    yap_literal_node path_lit = yap_parse_string_literal(src, path_node);
+    const char* display_path = path_lit.string.value ? path_lit.string.value : "(null)";
+    yap_log("File import declaration: path='%s'", display_path);
+    return (yap_decl_node){
+        .kind=yap_decl_file_import,
+        .file_import={
+            .path=path_lit.string,
+            .loc=yap_ts_node_loc(node, src),
+        }
+    };
 }
 
 yap_decl_node yap_parse_type_declaration(yap_source* src, TSNode node){
@@ -549,28 +630,101 @@ yap_literal_node yap_parse_literal(yap_source* src, TSNode node){
         typ = ts_node_type(node);
     }
 
-    if (strus_eq(typ, "blob_literal")){
-        char* text = yap_node_get_val_ctx(src, node);
-        return (yap_literal_node){ .kind=yap_literal_blob, .blob=text, .loc=yap_ts_node_loc(node, src) };
+    strus_switch(typ, "blob_literal"){
+        return yap_parse_blob_literal(src, node);
     }
-    if (strus_eq(typ, "num_literal")){
-        char* text = yap_node_get_val_ctx(src, node);
-        return (yap_literal_node){ .kind=yap_literal_numerical, .numerical=text, .loc=yap_ts_node_loc(node, src) };
+    strus_case(typ, "num_literal"){
+        return yap_parse_num_literal(src, node);
     }
-    if (strus_eq(typ, "string_literal")){
-        char* text = yap_node_get_val_ctx(src, node);
-        return (yap_literal_node){ .kind=yap_literal_blob, .blob=text, .loc=yap_ts_node_loc(node, src) };
+    strus_case(typ, "string_literal"){
+        return yap_parse_string_literal(src, node);
     }
-    if (strus_eq(typ, "bool_literal")){
-        char* text = yap_node_get_val_ctx(src, node);
-        return (yap_literal_node){ .kind=yap_literal_numerical, .numerical=text, .loc=yap_ts_node_loc(node, src) };
+    strus_case(typ, "bool_literal"){
+        return yap_parse_bool_literal(src, node);
     }
 
     yap_push_parse_error(src, node, "Unhandled literal type");
     return (yap_literal_node){ .kind=yap_literal_error, .err=yap_node_error(src, node, "Unhandled literal type"), .loc=yap_ts_node_loc(node, src) };
 }
 
-static yap_expr_node yap_parse_expr_literal(yap_source* src, TSNode node){
+yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node){
+    if (ts_node_null_or_error(node)){
+        yap_push_parse_error(src, node, "Invalid string literal");
+        return (yap_literal_node){
+            .kind=yap_literal_error,
+            .err=yap_node_error(src, node, "Invalid string literal"),
+            .loc=yap_ts_node_loc(node, src)
+        };
+    }
+    char* text = yap_node_get_val_ctx(src, node);
+    size_t offset = 0;
+    yap_string_literal_node str_lit = {0};
+    switch (text[0]){
+        case 'L':
+            offset = 2;
+            break;
+        case 'u':
+            offset = text[1] == '8' ? 3 : 2;
+            break;
+        case 'U':
+            offset = 2;
+            break;
+        default:
+            offset = 1;
+            break;
+    }
+    strncpy(str_lit.prefix, text, offset);
+    str_lit.prefix[offset] = '\0';
+    str_lit.value = text + offset; //skip prefix
+    str_lit.value[strlen(str_lit.value)-1] = '\0'; //remove closing quote
+    yap_log("Parsed string literal: prefix='%s' value='%s'", str_lit.prefix, str_lit.value);
+    return (yap_literal_node){
+        .kind=yap_literal_string,
+        .string=str_lit,
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
+yap_literal_node yap_parse_blob_literal(yap_source* src, TSNode node){
+    if (ts_node_null_or_error(node)){
+        yap_push_parse_error(src, node, "Invalid blob literal");
+        return (yap_literal_node){
+            .kind=yap_literal_error,
+            .err=yap_node_error(src, node, "Invalid blob literal"),
+            .loc=yap_ts_node_loc(node, src)
+        };
+    }
+    char* text = yap_node_get_val_ctx(src, node);
+    return (yap_literal_node){ .kind=yap_literal_blob, .blob=text, .loc=yap_ts_node_loc(node, src) };
+}
+
+yap_literal_node yap_parse_num_literal(yap_source* src, TSNode node){
+    if (ts_node_null_or_error(node)){
+        yap_push_parse_error(src, node, "Invalid numeric literal");
+        return (yap_literal_node){
+            .kind=yap_literal_error,
+            .err=yap_node_error(src, node, "Invalid numeric literal"),
+            .loc=yap_ts_node_loc(node, src)
+        };
+    }
+    char* text = yap_node_get_val_ctx(src, node);
+    return (yap_literal_node){ .kind=yap_literal_numerical, .numerical=text, .loc=yap_ts_node_loc(node, src) };
+}
+
+yap_literal_node yap_parse_bool_literal(yap_source* src, TSNode node){
+    if (ts_node_null_or_error(node)){
+        yap_push_parse_error(src, node, "Invalid bool literal");
+        return (yap_literal_node){
+            .kind=yap_literal_error,
+            .err=yap_node_error(src, node, "Invalid bool literal"),
+            .loc=yap_ts_node_loc(node, src)
+        };
+    }
+    char* text = yap_node_get_val_ctx(src, node);
+    return (yap_literal_node){ .kind=yap_literal_numerical, .numerical=text, .loc=yap_ts_node_loc(node, src) };
+}
+
+yap_expr_node yap_parse_expr_literal(yap_source* src, TSNode node){
     return (yap_expr_node){
         .kind=yap_expr_literal,
         .literal=yap_parse_literal(src, node),
@@ -578,7 +732,7 @@ static yap_expr_node yap_parse_expr_literal(yap_source* src, TSNode node){
     };
 }
 
-static yap_expr_node yap_parse_expr_identifier(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_identifier(yap_source* src, TSNode node){
     return (yap_expr_node){
         .kind=yap_expr_var,
         .var=yap_parse_identifier(src, node),
@@ -586,7 +740,7 @@ static yap_expr_node yap_parse_expr_identifier(yap_source* src, TSNode node){
     };
 }
 
-static yap_expr_node yap_parse_expr_bin(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_bin(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, left);
     yap_node_field_by_name_var(node, right);
@@ -607,7 +761,7 @@ static yap_expr_node yap_parse_expr_bin(yap_source* src, TSNode node){
     };
 }
 
-static yap_expr_node yap_parse_expr_assignment(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_assignment(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, left);
     yap_node_field_by_name_var(node, right);
@@ -630,7 +784,7 @@ static yap_expr_node yap_parse_expr_assignment(yap_source* src, TSNode node){
     return res;
 }
 
-static yap_expr_node yap_parse_expr_func_call(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_func_call(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, func);
     yap_node_field_var(params_node, node, "params");
@@ -666,7 +820,7 @@ static yap_expr_node yap_parse_expr_func_call(yap_source* src, TSNode node){
     };
 }
 
-static yap_expr_node yap_parse_expr_cast(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_cast(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, expr);
     yap_node_field_var(type_node, node, "type");
@@ -685,7 +839,7 @@ static yap_expr_node yap_parse_expr_cast(yap_source* src, TSNode node){
     };
 }
 
-static yap_expr_node yap_parse_expr_at_op(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_at_op(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, expr);
     if (ts_node_null_or_error(expr_node)){
@@ -703,7 +857,7 @@ static yap_expr_node yap_parse_expr_at_op(yap_source* src, TSNode node){
     };
 }
 
-static yap_expr_node yap_parse_expr_paren(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_paren(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, expr);
     if (ts_node_null_or_error(expr_node)){
@@ -720,7 +874,7 @@ static yap_expr_node yap_parse_expr_paren(yap_source* src, TSNode node){
     };
 }
 
-static yap_expr_node yap_parse_expr_incr(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_incr(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, expr);
     if (ts_node_null_or_error(expr_node)){
@@ -742,7 +896,7 @@ static yap_expr_node yap_parse_expr_incr(yap_source* src, TSNode node){
     };
 }
 
-static yap_expr_node yap_parse_expr_ternary(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_ternary(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, condition);
     yap_node_field_by_name_var(node, then_expr);
@@ -763,7 +917,7 @@ static yap_expr_node yap_parse_expr_ternary(yap_source* src, TSNode node){
     };
 }
 
-static yap_expr_node yap_parse_expr_member_access(yap_source* src, TSNode node){
+yap_expr_node yap_parse_expr_member_access(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, object);
     yap_node_field_by_name_var(node, member);
