@@ -84,6 +84,8 @@ module.exports = grammar({
   rules: {
     //def source_file
     source: $ => repeat($._declaration),
+    //def non_empty_source
+    non_empty_source: $ => repeat1($._declaration),
     //def comment
     _comment: $ => token(choice(
       seq('//', /(\\+(.|\r?\n)|[^\\\n])*/),
@@ -259,7 +261,7 @@ module.exports = grammar({
       $.function_type,
       $.macro_type,
       $.paren_type,
-      $.const_type
+      $.const_type,
     ),
     const: $ => "const",
     const_type: $ => seq(
@@ -477,6 +479,7 @@ module.exports = grammar({
       $.comp_op, //NOT IMPLEMENTED YET
       $._macro_call, //NOT IMPLEMENTED YET
       $.comptime_context, //NOT IMPLEMENTED YET
+      $.ast_blueprint
     ),
     block_expr: $ => prec.right(PREC.PAREN, seq(
       field("open_bracket", '('),
@@ -591,10 +594,13 @@ module.exports = grammar({
     //def identifier
     identifier : $ => /[a-zA-Z_]\w*/ ,
     //def _macro_call
-    _macro_call: $ => choice(
-      $.paramless_macro_call,
-      $.param_macro_call
-    ),
+    _macro_call: $ => prec.right(seq(
+      field("macro_call", choice(
+        $.paramless_macro_call,
+        $.param_macro_call
+      )),
+      optional(field("macro_block", seq(":", $.block)))
+    )),
     //def paramless_macro_call
     paramless_macro_call: $ => seq(
       field("caller", $.macro_caller),
@@ -609,8 +615,22 @@ module.exports = grammar({
     ),
     //def macro_param
     macro_param: $ => choice(
-      $._param,
-      ','
+      $.named_param,
+      $.unnamed_param,
+      ',',
+      $.block,
+      $.identifier_adding_param,
+      $.macro_mod_param,
+    ),
+    //def identifier_adding_param
+    identifier_adding_param: $ => seq(
+      field("identifier_adding_op", "+"),
+      field("name", $.identifier),
+    ),
+    //def modifying_macro_param
+    macro_mod_param: $ => seq(
+      field("macro_mod_param", '$'),
+      field("expr", $._expr)
     ),
     //def macro_caller
     macro_caller: $ => choice(
@@ -618,10 +638,16 @@ module.exports = grammar({
       $.module_access,
       $.method_access,
     ),
+    //def ast_blueprint
+    ast_blueprint: $ => seq(
+      field("ast_start", "ast{"),
+      optional(field("ast_content", $.non_empty_source)),
+      field("ast_end", '}'),
+    ),
     //def comptime_context
     comptime_context: $ => '(#)',
   }
-});
+});2
 
 //TODO:
 // C ABI
