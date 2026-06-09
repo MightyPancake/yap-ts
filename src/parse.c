@@ -54,16 +54,17 @@ static void yap_log_node(yap_source* src, TSNode node, const char* fmt, ...){
 
 yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
     yap_log("\n\nPhase 1: Parsing\n");
-    yap_parser* parser = yap_new_parser(ctx);
+    yap_ctx* res = yap_ctx_init_ts_parser(ctx);
     if (darr_len(args.extra) == 0){
         printf("No source file provided\n");
         exit(1);
     }
-    yap_log("Parsing entry file '%s'", darr_first(args.extra));
-    yap_parser_parse_file(parser, darr_first(args.extra));
-    yap_ctx* ret = parser->ctx;
-    yap_free_parser(parser);
-    return ret;
+    char* resolved_path = yap_resolve_path(darr_first(args.extra));
+    char* identity = yap_ctx_strus_cpy(ctx, resolved_path);
+    free(resolved_path);
+    yap_parse_file(res, darr_first(args.extra), identity);
+    yap_free_parser(res->parser_ctx);
+    return res;
 }
 
 TSNode yap_parse_first_child(TSNode node){
@@ -154,35 +155,31 @@ darr(yap_var_decl_node) yap_parse_union_variants(yap_source* src, TSNode variant
     return variants;
 }
 
-void yap_parse_source_file(yap_source* src, TSNode node){
-    if (!src) return;
-    yap_ctx* ctx = (yap_ctx*)src->ctx;
-    yap_log_node(src, node, "Parsing source file");
-
+void yap_parse_source(yap_source* src){
+    yap_ctx* ctx = src->ctx;
+    yap_parser* parser = ctx->parser_ctx;
+    TSParser* ts_parser = parser->parser;
+    //Tree-sitter parsing
+    TSTree* tree = ts_parser_parse_string(ts_parser, NULL, src->content, src->sz);
+    //Get root node
+    TSNode node = ts_tree_root_node(tree);
     uint32_t count = ts_node_named_child_count(node);
-    yap_module_node module = {
-        .declarations = yap_ctx_darr_new(ctx, yap_decl_node, .cap=count, .len=0),
-        .loc = yap_ts_node_loc(node, src)
-    };
+    yap_log("Parsing source '%s', root has %u named children", src->label, count);
 
-    if (ts_node_null_or_error(node)){
-        yap_push_parse_error(src, node, "Expected source file root");
-        src->ast = yap_ctx_one_cpy(ctx, module);
-        return;
-    }
-    const char* _root_typ = ts_node_type(node);
-    strus_switch(_root_typ, "source"){
-    }else{
-        yap_push_parse_error(src, node, "Expected source file root");
-        src->ast = yap_ctx_one_cpy(ctx, module);
-        return;
-    }
-
+    darr(yap_decl_node) decls = yap_ctx_darr_new(ctx, yap_decl_node, .cap=count, .len=0);
     for_ts_named_children(node, n){
-        darr_push(module.declarations, yap_parse_decl(src, n));
+        darr_push(decls, yap_parse_decl(src, n));
     }
-
-    src->ast = yap_ctx_one_cpy(ctx, module);
+    yap_source_node source_node = {
+        .declarations = decls,
+        .loc = (yap_loc){
+            .src = src,
+            .range = yap_node_get_range(node)
+        }
+    };
+    src->source_node = yap_ctx_one_cpy(ctx, source_node);
+    //Free tree
+    ts_tree_delete(tree);
 }
 
 yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
@@ -274,6 +271,7 @@ yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
 }
 
 yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
     yap_decl_node res = {.kind=yap_decl_error};
     if (ts_node_null_or_error(node)){
         yap_push_parse_error(src, node, "Invalid file import declaration");
@@ -289,8 +287,20 @@ yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node){
         return res;
     }
     yap_literal_node path_lit = yap_parse_string_literal(src, path_node);
-    const char* display_path = path_lit.string.value ? path_lit.string.value : "(null)";
+    char* display_path = path_lit.string.value ? path_lit.string.value : "(null)";
     yap_log("File import declaration: path='%s'", display_path);
+    //Actually import the file and parse it
+    char* parent_path = yap_get_parent_dir(src->origin);
+    yap_log("Resolving path '%s' relative to '%s'", display_path, parent_path ? parent_path : "(null)");
+    char* resolved_path = yap_resolve_path_relative_to(parent_path, path_lit.string.value);
+    char* identity = yap_ctx_strus_cpy(ctx, resolved_path);
+    yap_log("Resolved path: '%s'", resolved_path ? resolved_path : "(null)");
+    free(parent_path);
+    free(resolved_path);
+    yap_parse_file(ctx, display_path, identity);
+    // free(parent_path);
+    // free(resolved_path);
+    //end of import+parsing
     return (yap_decl_node){
         .kind=yap_decl_file_import,
         .file_import={
