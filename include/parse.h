@@ -6,7 +6,7 @@
 
 //Source
 yap_ctx* yap_parse(yap_ctx* ctx, yap_args args);
-void yap_parse_source_file(yap_source* src, TSNode node);
+void yap_parse_source(yap_source* src);
 
 //Misc parse results
 yap_identifier_node yap_parse_identifier(yap_source* src, TSNode node);
