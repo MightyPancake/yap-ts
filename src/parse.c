@@ -164,7 +164,7 @@ void yap_parse_source(yap_source* src){
     //Get root node
     TSNode node = ts_tree_root_node(tree);
     uint32_t count = ts_node_named_child_count(node);
-    yap_log("Parsing source '%s', root has %u named children", src->label, count);
+    yap_log("Parsing source '%s', %u declarations", src->label, count);
 
     darr(yap_decl_node) decls = yap_ctx_darr_new(ctx, yap_decl_node, .cap=count, .len=0);
     for_ts_named_children(node, n){
@@ -297,7 +297,9 @@ yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node){
     yap_log("Resolved path: '%s'", resolved_path ? resolved_path : "(null)");
     free(parent_path);
     free(resolved_path);
+    yap_log("\t Importing and parsing file '%s'", display_path);
     yap_parse_file(ctx, display_path, identity);
+    yap_log("\t Finished importing and parsing file '%s', back to %s", display_path, src->label);
     // free(parent_path);
     // free(resolved_path);
     //end of import+parsing
