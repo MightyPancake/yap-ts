@@ -42,7 +42,7 @@ const PREC = {
   TERNARY: 1,           // cond ? val_if_true : val_if_false
   EXPR_STATEMENT: 1,    // expr being a statement
     // Precedence for variable declarations (one higher than EXPR_STATEMENT)
-    VAR_DECL: 2,
+  VAR_DECL: 2,
   COMPARISON: 2,    // expr == expr, etc.
   '+': 3,               // +
   '-': 3,               // -
@@ -61,13 +61,12 @@ const PREC = {
 module.exports = grammar({
   name: "yap",
   conflicts: $ => [
-    [$.function_declaration, $._expr],
-    [$.macro_declaration, $.macro_statement, $._expr],
-    [$.macro_statement, $._expr],
+    [$._func_decl_core, $._expr],
+    [$.macro_declaration, $.macro_statement, $.macro_expr, $.macro_type],
+    [$.macro_statement, $.macro_expr],
+    [$.macro_statement, $.macro_type],
+    [$.macro_expr, $.macro_type],
     [$.typ, $._expr],
-    [$.function_type, $.func_literal],
-    // [$.typ, $.var_declarator],
-    [$.macro_type, $._expr],
   ],
   //Things to ignore
   extras: $ => [
@@ -101,8 +100,8 @@ module.exports = grammar({
       $.module_declaration, //TODO: Creates a module
       $.module_import_declaration, //TODO: Imports a module
       $.file_import_declaration, //TODO: Imports a file
-      $.function_declaration, //TODO: Checks/default params. Can emit to global or another module
-      $.macro_declaration, //TODO: Implement. Can emit to global or another module
+      $.function_declaration, //TODO: Implement
+      $.function_definition, //TODO: Checks/default params. Can emit to global or another module
       $.type_declaration, //TODO: Finish? Forward / num declarations. Can emit to global or another module
       $._statement, //Still being done I guess. Emits into current module.
     ),
@@ -163,15 +162,13 @@ module.exports = grammar({
       comma_sep($.struct_field),
     ),
     //def struct_field
-    // A struct field can be either a full var_decl (explicit typed decl),
-    // or an explicit anon-type form: `type name [ := expr ]`.
     struct_field: $ => choice(
       $.var_decl,
       seq(
-        field("type", $._type_annotation),
+        field("type", choice($.anon_struct_type, $.anon_enum_type, $.anon_union_type)),
         field("name", $.identifier),
         optional(seq(
-          field("assign", ":="),
+          field("assign", "="),
           field("default_value", $._expr)
         ))
       )
@@ -195,7 +192,7 @@ module.exports = grammar({
       field("value_node", 
         optional(
           seq(
-            field("assign", ':='),
+            field("assign", '='),
             field("value", $._expr)
           )
         )
@@ -228,6 +225,17 @@ module.exports = grammar({
     macro_declaration: $ => $._macro_call,
     //def function_declaration
     function_declaration: $ => seq(
+      field("func_decl", $._func_decl_core),
+      field("semicolon", ';')
+    ),
+    //def function_definition
+    function_definition: $ => seq(
+      field("func_decl", $._func_decl_core),
+      field("body", $.block)
+    ),
+    //def _func_decl_core
+    _func_decl_core: $ => seq(
+      field("return_type", optional($.typ)),
       field("fn", "fn"),
       optional(
         field("subject", seq(
@@ -240,16 +248,6 @@ module.exports = grammar({
       "(",
       field("args", optional($.func_decl_args)),
       ")",
-      optional(
-        seq(
-          field("return_type_op", "->"),
-          choice(
-            field("return_type", $.typ),
-            field("return_var_decl", $.var_decl)
-          )
-        )
-      ),
-      field("body", $.block)
     ),
     //def func_decl_args
     func_decl_args: $ => comma_sep($.var_decl),
@@ -292,12 +290,14 @@ module.exports = grammar({
       repeat($._statement),
       field("closing_bracket", '}'),
     ),
+    //def _statement
     //def statement
+    statement: $ => $._statement,
     _statement: $ => choice(
       $.block,
       $.macro_statement, //TODO
-      $.var_decl,
-      $.expr_statement, 
+      $._var_decl_statement,
+      $.expr_statement,
       $.if_statement,
       $.if_else_statement,
       $.empty_statement,
@@ -306,6 +306,10 @@ module.exports = grammar({
       $.return_statement,
       $.break_statement,
       $.continue_statement
+    ),
+    _var_decl_statement: $ => seq(
+      field("var_decl", $.var_decl),
+      field("semicolon", ';')
     ),
     macro_statement: $ => $._macro_call,
     //def break_statement
@@ -326,17 +330,17 @@ module.exports = grammar({
       )
     )),
     infered_type_var_decl: $ => seq(
+      field("no_type", "_"),
       field("name", $.identifier),
-      field("assign", ":="),
+      field("assign", "="),
       field("value", $._expr)
     ),
     explicit_type_var_decl: $ => seq(
       field("type", $.typ),
-      ":",
       field("name", $.identifier),
       optional(
         seq(
-           field("assign", ":="),
+           field("assign", "="),
            field("value", $._expr)
         )
       )
@@ -398,8 +402,9 @@ module.exports = grammar({
     unnamed_param: $ => $._expr,
     //def named_param
     named_param: $ => seq(
+      field("dot", '.'),
       field("name", $.identifier),
-      field("assign", ":="),
+      field("assign", "="),
       field("value", $._expr)
     ),
     //def bin_expr
@@ -456,7 +461,10 @@ module.exports = grammar({
       field("right", $._expr),
     )),
     //def expr_statement
-    expr_statement: $ => prec.right(PREC.EXPR_STATEMENT, $._expr),
+    expr_statement: $ => prec.right(PREC.EXPR_STATEMENT, seq(
+      field("expr", $._expr),
+      field("semicolon", ';')
+    )),
     //def empty_statement
     empty_statement: $ => ';',
     //def expr
@@ -477,10 +485,12 @@ module.exports = grammar({
       $.method_access, //NOT IMPLEMENTED YET
       $.module_access, //NOT IMPLEMENTED YET
       $.comp_op, //NOT IMPLEMENTED YET
-      $._macro_call, //NOT IMPLEMENTED YET
-      $.comptime_context, //NOT IMPLEMENTED YET
-      $.ast_blueprint
+      $.ast_blueprint,
+      $.macro_expr, //NOT IMPLEMENTED YET
     ),
+    //def macro_expr
+    macro_expr: $ => $._macro_call,
+    //def  block_expr
     block_expr: $ => prec.right(PREC.PAREN, seq(
       field("open_bracket", '('),
       field("block", $.block),
@@ -599,7 +609,7 @@ module.exports = grammar({
         $.paramless_macro_call,
         $.param_macro_call
       )),
-      optional(field("macro_block", seq(":", $.block)))
+      // optional(field("macro_block", seq(":", $.block)))
     )),
     //def paramless_macro_call
     paramless_macro_call: $ => seq(
@@ -610,15 +620,16 @@ module.exports = grammar({
     param_macro_call: $ => seq(
       field("caller", $.macro_caller),
       field("macro_call_op", "#("),
-      repeat($.macro_param),
+      field("params", optional($.macro_params)),
       field("close_paren", ')')
     ),
+    //def macro_params
+    macro_params: $ => comma_sep($.macro_param),
     //def macro_param
     macro_param: $ => choice(
       $.named_param,
       $.unnamed_param,
-      ',',
-      $.block,
+      $._statement,
       $.identifier_adding_param,
       $.macro_mod_param,
     ),
@@ -644,10 +655,8 @@ module.exports = grammar({
       optional(field("ast_content", $.non_empty_source)),
       field("ast_end", '}'),
     ),
-    //def comptime_context
-    comptime_context: $ => '(#)',
   }
-});2
+});
 
 //TODO:
 // C ABI

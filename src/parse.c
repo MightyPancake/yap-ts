@@ -79,9 +79,11 @@ darr(yap_var_decl_node) yap_parse_struct_fields(yap_source* src, TSNode fields_n
     uint32_t count = ts_node_named_child_count(fields_node);
     darr(yap_var_decl_node) fields = yap_ctx_darr_new(ctx, yap_var_decl_node, .cap=count, .len=0);
     for_ts_named_children(fields_node, field_node){
-        const char* _ft = ts_node_type(field_node);
+        /* struct_field wraps its alternatives; peek inside to find the actual type */
+        TSNode field_inner = yap_parse_first_child(field_node);
+        const char* _ft = ts_node_type(field_inner);
         if (strus_eq(_ft, "var_decl")){
-            darr_push(fields, yap_parse_var_decl(src, field_node));
+            darr_push(fields, yap_parse_var_decl(src, field_inner));
             continue;
         }
         /* typed-field form: type name [ := default ] */
@@ -166,6 +168,8 @@ void yap_parse_source(yap_source* src){
     uint32_t count = ts_node_named_child_count(node);
     yap_log("Parsing source '%s', %u declarations", src->label, count);
 
+    yap_print_tree(node, 0);
+
     darr(yap_decl_node) decls = yap_ctx_darr_new(ctx, yap_decl_node, .cap=count, .len=0);
     for_ts_named_children(node, n){
         darr_push(decls, yap_parse_decl(src, n));
@@ -193,6 +197,8 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
 
     const char* typ = ts_node_type(node);
     strus_switch(typ, "function_declaration"){
+        res = yap_parse_func_decl(src, node);
+    }strus_case(typ, "function_definition"){
         res = yap_parse_func_decl(src, node);
     }strus_case(typ, "struct_declaration"){
         res = yap_parse_struct_decl(src, node);
@@ -364,17 +370,16 @@ yap_decl_node yap_parse_func_decl(yap_source* src, TSNode node){
     yap_log("Function declaration: name='%s' args=%u", parsed_name.value ? parsed_name.value : "(anon)", (unsigned)darr_len(args));
 
     yap_node_field_var(body_node, node, "body");
-    yap_node_field_var(return_var_decl_node, node, "return_var_decl");
     yap_node_field_var(return_type_node, node, "return_type");
 
     bool has_return_type = false;
     yap_identifier_node return_type = {0};
     if (!ts_node_null_or_error(return_type_node)){
-        has_return_type = true;
-        return_type = yap_parse_identifier(src, yap_parse_first_child(return_type_node));
-    }else if (!ts_node_null_or_error(return_var_decl_node)){
-        has_return_type = true;
-        return_type = yap_parse_identifier(src, yap_parse_first_child(return_var_decl_node));
+        TSNode rt_child = yap_parse_first_child(return_type_node);
+        if (!ts_node_null_or_error(rt_child)){
+            has_return_type = true;
+            return_type = yap_parse_identifier(src, rt_child);
+        }
     }
 
     if (ts_node_null_or_error(body_node)){
@@ -577,7 +582,7 @@ yap_func_arg_node yap_parse_func_arg(yap_source* src, TSNode node){
 
 darr(yap_func_arg_node) yap_parse_func_args(yap_source* src, TSNode node){
     yap_ctx* ctx = src->ctx;
-    if (ts_node_is_null(node)){
+    if (ts_node_is_null(node) || ts_node_has_error(node)){
         return yap_ctx_darr_new(ctx, yap_func_arg_node, .cap=0, .len=0);
     }
 
@@ -653,6 +658,10 @@ yap_literal_node yap_parse_literal(yap_source* src, TSNode node){
     }
     strus_case(typ, "bool_literal"){
         return yap_parse_bool_literal(src, node);
+    }
+    strus_case(typ, "func_literal"){
+        yap_push_parse_error(src, node, "Function literals are not supported yet");
+        return (yap_literal_node){ .kind=yap_literal_error, .err=yap_node_error(src, node, "Function literals are not supported yet"), .loc=yap_ts_node_loc(node, src) };
     }
 
     yap_push_parse_error(src, node, "Unhandled literal type");
@@ -993,8 +1002,18 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         yap_push_parse_error(src, node, "Unhandled expression");
         return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Unhandled expression"), .loc=yap_ts_node_loc(node, src) };
     }strus_case(typ, "block_expr"){
-        yap_push_parse_error(src, node, "Unhandled expression");
-        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Unhandled expression"), .loc=yap_ts_node_loc(node, src) };
+        /* block_expr is ( block ) — extract the block field */
+        yap_node_field_var(block_node, node, "block");
+        if (ts_node_null_or_error(block_node)){
+            yap_push_parse_error(src, node, "Missing block in block expression");
+            return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing block in block expression"), .loc=yap_ts_node_loc(node, src) };
+        }
+        yap_log_node(src, node, "Parsing block expression");
+        return (yap_expr_node){
+            .kind=yap_expr_block,
+            .block=yap_parse_block(src, block_node),
+            .loc=yap_ts_node_loc(node, src)
+        };
     }strus_case(typ, "macro_statement"){
         yap_push_parse_error(src, node, "Unhandled expression");
         return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Unhandled expression"), .loc=yap_ts_node_loc(node, src) };
