@@ -10,6 +10,7 @@ void yap_parse_source(yap_source* src);
 
 //Misc parse results
 yap_identifier_node yap_parse_identifier(yap_source* src, TSNode node);
+yap_type_node yap_parse_type_node(yap_source* src, TSNode type_node);
 darr(yap_func_arg_node) yap_parse_func_args(yap_source* src, TSNode node);
 yap_func_arg_node yap_parse_func_arg(yap_source* src, TSNode node);
 
