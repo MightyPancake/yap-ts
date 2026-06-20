@@ -42,7 +42,7 @@ default: all
 all: ./lib/libtree-sitter.a grammar yap_ts
 
 yap_ts:
-	@echo $(PURPLE)Generating yap-ts module$(RESET)
+	@echo $(PURPLE)Generating yap-ts frontend component$(RESET)
 	@echo $(CYAN)"log: $(log)"$(RESET)
 	@echo $(CYAN)Buildig objects$(RESET)
 	@echo $(CC) -fPIC $(YAP_TS_FLAGS) src/*.c -c $(CFLAGS)

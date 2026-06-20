@@ -97,7 +97,9 @@ darr(yap_var_decl_node) yap_parse_struct_fields(yap_source* src, TSNode fields_n
         yap_var_decl_node v = {0};
         v.name = yap_parse_identifier(src, name_node);
         v.has_type = !ts_node_null_or_error(type_node);
-        v.type_name = v.has_type ? yap_parse_identifier(src, yap_parse_first_child(type_node)) : (yap_identifier_node){0};
+        if (v.has_type){
+            v.type_node = yap_ctx_one_cpy(ctx, yap_parse_type_node(src, type_node));
+        }
         v.has_init = !ts_node_null_or_error(default_value_node);
         v.init = v.has_init ? yap_parse_expr(src, default_value_node) : (yap_expr_node){0};
         v.loc = yap_ts_node_loc(field_node, src);
@@ -148,7 +150,7 @@ darr(yap_var_decl_node) yap_parse_union_variants(yap_source* src, TSNode variant
         yap_var_decl_node v = {0};
         v.name = yap_parse_identifier(src, name_node);
         v.has_type = true;
-        v.type_name = yap_parse_identifier(src, yap_parse_first_child(type_node));
+        v.type_node = yap_ctx_one_cpy(ctx, yap_parse_type_node(src, type_node));
         v.has_init = false;
         v.init = (yap_expr_node){0};
         v.loc = yap_ts_node_loc(variant_node, src);
@@ -373,18 +375,12 @@ yap_decl_node yap_parse_func_decl(yap_source* src, TSNode node){
     yap_node_field_var(return_type_node, node, "return_type");
 
     bool has_return_type = false;
-    yap_identifier_node return_type = {0};
+    yap_type_node* rt_node = NULL;
     if (!ts_node_null_or_error(return_type_node)){
-        TSNode rt_child = yap_parse_first_child(return_type_node);
-        if (!ts_node_null_or_error(rt_child)){
-            has_return_type = true;
-            return_type = yap_parse_identifier(src, rt_child);
-        }
-    }
-
-    if (ts_node_null_or_error(body_node)){
-        yap_push_parse_error(src, node, "Function body is missing");
-        return (yap_decl_node){ .kind=yap_decl_error, .err=yap_node_error(src, node, "Function body is missing") };
+        has_return_type = true;
+        yap_type_node parsed_rt = yap_parse_type_node(src, return_type_node);
+        yap_ctx* _ctx = src->ctx;
+        rt_node = yap_ctx_one_cpy(_ctx, parsed_rt);
     }
 
     return (yap_decl_node){
@@ -393,8 +389,8 @@ yap_decl_node yap_parse_func_decl(yap_source* src, TSNode node){
             .name=parsed_name,
             .args=args,
             .has_return_type=has_return_type,
-            .return_type=return_type,
-            .body=yap_parse_block(src, body_node),
+            .return_type_node=rt_node,
+            .body=ts_node_null_or_error(body_node) ? (yap_block_node){0} : yap_parse_block(src, body_node),
             .loc=yap_ts_node_loc(node, src),
         }
     };
@@ -537,12 +533,13 @@ yap_func_arg_node yap_parse_func_arg(yap_source* src, TSNode node){
             };
         }
         yap_identifier_node arg_name = yap_parse_identifier(src, name_node);
-        yap_identifier_node arg_type = yap_parse_identifier(src, yap_parse_first_child(type_node));
-        yap_log("Function arg: name='%s' type='%s'", arg_name.value ? arg_name.value : "(anon)", arg_type.value ? arg_type.value : "(none)");
+        yap_type_node arg_type = yap_parse_type_node(src, type_node);
+        yap_log("Function arg: name='%s'", arg_name.value ? arg_name.value : "(anon)");
+        yap_ctx* _ctx = src->ctx;
         return (yap_func_arg_node){
             .name=arg_name,
             .has_type=true,
-            .type_name=arg_type,
+            .type_node=yap_ctx_one_cpy(_ctx, arg_type),
             .has_default=!ts_node_null_or_error(value_node),
             .default_value=ts_node_null_or_error(value_node) ? (yap_expr_node){0} : yap_parse_expr(src, value_node),
             .is_valid=true,
@@ -564,7 +561,7 @@ yap_func_arg_node yap_parse_func_arg(yap_source* src, TSNode node){
         return (yap_func_arg_node){
             .name=arg_name,
             .has_type=false,
-            .type_name=(yap_identifier_node){0},
+            .type_node=NULL,
             .has_default=true,
             .default_value=yap_parse_expr(src, value_node),
             .is_valid=true,
@@ -596,6 +593,93 @@ darr(yap_func_arg_node) yap_parse_func_args(yap_source* src, TSNode node){
 
 bool yap_identifier_node_is_valid(yap_identifier_node node){
     return node.value != NULL;
+}
+
+yap_type_node yap_parse_type_node(yap_source* src, TSNode type_node){
+    yap_ctx* ctx = src->ctx;
+    if (ts_node_null_or_error(type_node)){
+        return (yap_type_node){ .kind = yap_type_node_error, .err = yap_node_error(src, type_node, "Invalid type node"), .loc = yap_ts_node_loc(type_node, src) };
+    }
+
+    /* Unwrap layers */
+    while (true){
+        const char* tt = ts_node_type(type_node);
+        if (strus_eq(tt, "typ")){
+            type_node = yap_parse_first_child(type_node);
+            if (ts_node_null_or_error(type_node)){
+                return (yap_type_node){ .kind = yap_type_node_error, .err = yap_node_error(src, type_node, "Empty typ wrapper"), .loc = yap_ts_node_loc(type_node, src) };
+            }
+            continue;
+        }
+        if (strus_eq(tt, "paren_type")){
+            yap_node_field_by_name_var(type_node, inner);
+            if (!ts_node_null_or_error(inner_node)){
+                type_node = inner_node;
+                continue;
+            }
+        }
+        break;
+    }
+
+    const char* tt = ts_node_type(type_node);
+    yap_loc loc = yap_ts_node_loc(type_node, src);
+
+    if (strus_eq(tt, "identifier")){
+        return (yap_type_node){ .kind = yap_type_node_identifier, .identifier = yap_parse_identifier(src, type_node), .loc = loc };
+    }
+    if (strus_eq(tt, "pointer_type")){
+        yap_node_field_by_name_var(type_node, subtyp);
+        yap_type_node* subtype = yap_ctx_one(ctx, yap_type_node);
+        *subtype = yap_parse_type_node(src, subtyp_node);
+        return (yap_type_node){ .kind = yap_type_node_pointer, .pointer_subtype = subtype, .loc = loc };
+    }
+    if (strus_eq(tt, "const_type")){
+        yap_node_field_by_name_var(type_node, inner);
+        yap_type_node* subtype = yap_ctx_one(ctx, yap_type_node);
+        *subtype = yap_parse_type_node(src, inner_node);
+        return (yap_type_node){ .kind = yap_type_node_const, .const_subtype = subtype, .loc = loc };
+    }
+    if (strus_eq(tt, "paren_type")){
+        yap_node_field_by_name_var(type_node, inner);
+        yap_type_node* subtype = yap_ctx_one(ctx, yap_type_node);
+        *subtype = yap_parse_type_node(src, inner_node);
+        return (yap_type_node){ .kind = yap_type_node_paren, .paren_subtype = subtype, .loc = loc };
+    }
+    if (strus_eq(tt, "function_type")){
+        yap_node_field_var(return_type_node, type_node, "return_type");
+        yap_node_field_by_name_var(type_node, func_type_params);
+        yap_type_node* rt = NULL;
+        if (!ts_node_null_or_error(return_type_node)){
+            rt = yap_ctx_one(ctx, yap_type_node);
+            *rt = yap_parse_type_node(src, return_type_node);
+        }
+        uint32_t param_cnt = ts_node_null_or_error(func_type_params_node) ? 0 : ts_node_named_child_count(func_type_params_node);
+        darr(yap_type_node) params = yap_ctx_darr_new(ctx, yap_type_node, .cap = param_cnt, .len = 0);
+        if (!ts_node_null_or_error(func_type_params_node)){
+            for_ts_named_children(func_type_params_node, p){
+                darr_push(params, yap_parse_type_node(src, p));
+            }
+        }
+        return (yap_type_node){ .kind = yap_type_node_function, .func_type = { .return_type = rt, .params = params }, .loc = loc };
+    }
+    if (strus_eq(tt, "anon_struct_type")){
+        yap_node_field_by_name_var(type_node, fields);
+        darr(yap_var_decl_node) f = yap_parse_struct_fields(src, fields_node);
+        return (yap_type_node){ .kind = yap_type_node_anon_struct, .anon_struct = { .fields = f }, .loc = loc };
+    }
+    if (strus_eq(tt, "anon_enum_type")){
+        yap_node_field_by_name_var(type_node, variants);
+        darr(yap_enum_variant_node) v = yap_parse_enum_variants(src, variants_node);
+        return (yap_type_node){ .kind = yap_type_node_anon_enum, .anon_enum = { .variants = v }, .loc = loc };
+    }
+    if (strus_eq(tt, "anon_union_type")){
+        yap_node_field_by_name_var(type_node, variants);
+        darr(yap_var_decl_node) v = yap_parse_union_variants(src, variants_node);
+        return (yap_type_node){ .kind = yap_type_node_anon_union, .anon_union = { .variants = v }, .loc = loc };
+    }
+
+    /* Fallback: treat as opaque identifier */
+    return (yap_type_node){ .kind = yap_type_node_identifier, .identifier = yap_parse_identifier(src, type_node), .loc = loc };
 }
 
 yap_identifier_node yap_parse_identifier(yap_source* src, TSNode node){
@@ -852,7 +936,7 @@ yap_expr_node yap_parse_expr_cast(yap_source* src, TSNode node){
     return (yap_expr_node){
         .kind=yap_expr_cast,
         .cast={
-            .type_name=yap_parse_identifier(src, yap_parse_first_child(type_node)),
+            .type_node=yap_ctx_one_cpy(ctx, yap_parse_type_node(src, type_node)),
             .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
             .loc=yap_ts_node_loc(node, src)
         },
@@ -1060,7 +1144,7 @@ yap_statement_node yap_parse_statement(yap_source* src, TSNode node){
                             .var_decl=(yap_var_decl_node){
                                 .name=yap_parse_identifier(src, name_node),
                                 .has_type=true,
-                                .type_name=yap_parse_identifier(src, caller_node),
+                                .type_node=yap_ctx_one_cpy(ctx, yap_parse_type_node(src, caller_node)),
                                 .has_init=false,
                                 .init=(yap_expr_node){0},
                                 .loc=yap_ts_node_loc(node, src)
@@ -1188,7 +1272,7 @@ yap_var_decl_node yap_parse_var_decl(yap_source* src, TSNode node){
         return (yap_var_decl_node){
             .name=var_name,
             .has_type=false,
-            .type_name=(yap_identifier_node){0},
+            .type_node=NULL,
             .has_init=!ts_node_null_or_error(value_node),
             .init=ts_node_null_or_error(value_node) ? (yap_expr_node){0} : yap_parse_expr(src, value_node),
             .loc=yap_ts_node_loc(inner, src)
@@ -1202,12 +1286,13 @@ yap_var_decl_node yap_parse_var_decl(yap_source* src, TSNode node){
             return (yap_var_decl_node){ .loc=yap_ts_node_loc(inner, src) };
         }
         yap_identifier_node var_name = yap_parse_identifier(src, name_node);
-        yap_identifier_node var_type = yap_parse_identifier(src, yap_parse_first_child(type_node));
-        yap_log("Variable declaration (explicit): name='%s' type='%s'", var_name.value ? var_name.value : "(anon)", var_type.value ? var_type.value : "(none)");
+        yap_type_node type_node_parsed = yap_parse_type_node(src, type_node);
+        yap_log("Variable declaration (explicit): name='%s'", var_name.value ? var_name.value : "(anon)");
+        yap_ctx* _ctx2 = src->ctx;
         return (yap_var_decl_node){
             .name=var_name,
             .has_type=true,
-            .type_name=var_type,
+            .type_node=yap_ctx_one_cpy(_ctx2, type_node_parsed),
             .has_init=!ts_node_null_or_error(value_node),
             .init=ts_node_null_or_error(value_node) ? (yap_expr_node){0} : yap_parse_expr(src, value_node),
             .loc=yap_ts_node_loc(inner, src)

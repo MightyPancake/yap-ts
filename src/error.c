@@ -41,10 +41,12 @@ void yap_print_error(yap_error err){
   // char* src_stack = strus_newf("In file: %s\n"err.src->path);
   err_printf(aesc_red "Error" aesc_reset);
   err_printf(" in "aesc_cyan"%s"aesc_reset" at "aesc_yellow "%d:%d\n" aesc_reset, src->label, start.line+1, start.column);
-  err_printf("         └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
+  // err_printf("         └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
   // err_printf("           └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
   yap_source* parent = (yap_source*)src->parent;
+  int depth = 0;
   while(parent){
+    for (int i=0; i<depth; i++) err_printf("  ");
     err_printf("└─ from " aesc_cyan"%s"aesc_reset"\n", parent->label);
     parent = (yap_source*)parent->parent;
   }
