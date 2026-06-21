@@ -44,10 +44,18 @@ void yap_print_error(yap_error err){
   // err_printf("         └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
   // err_printf("           └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
   yap_source* parent = (yap_source*)src->parent;
-  int depth = 0;
-  while(parent){
-    for (int i=0; i<depth; i++) err_printf("  ");
-    err_printf("└─ from " aesc_cyan"%s"aesc_reset"\n", parent->label);
+  int depth = 1;
+  yap_source *current = src;
+  while(parent && parent != err.src->ctx->root_source){
+    for (int i=0; i<depth; i++) err_printf("        ");
+    depth++;
+    if (current->import_loc.src){
+      err_printf("└─ from " aesc_cyan"%s"aesc_reset" at " aesc_yellow"%d:%d"aesc_reset"\n",
+        parent->label, current->import_loc.range.start.line+1, current->import_loc.range.start.column);
+    } else {
+      err_printf("└─ from " aesc_cyan"%s"aesc_reset"\n", parent->label);
+    }
+    current = parent;
     parent = (yap_source*)parent->parent;
   }
   err_printf(aesc_red aesc_style("1") "" aesc_style("3") "  %s\n\n" aesc_reset, err.msg);

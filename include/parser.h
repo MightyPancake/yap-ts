@@ -11,7 +11,7 @@ void yap_free_parser(yap_parser* ps);
 void yap_parser_open_file(yap_parser* ps, char* path);
 
 //Parsing
-void yap_parse_file(yap_ctx* ctx, char* path, char* identity);
+void yap_parse_file(yap_ctx* ctx, char* path, char* identity, yap_loc import_loc);
 
 //Cache
 void yap_cache_source_node(yap_parser* parser, const char* absolute_path, yap_source_node* node);
