@@ -62,7 +62,7 @@ yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
     char* resolved_path = yap_resolve_path(darr_first(args.extra));
     char* identity = yap_ctx_strus_cpy(ctx, resolved_path);
     free(resolved_path);
-    yap_parse_file(res, darr_first(args.extra), identity);
+    yap_parse_file(res, darr_first(args.extra), identity, (yap_loc){0});
     yap_free_parser(res->parser_ctx);
     return res;
 }
@@ -306,7 +306,7 @@ yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node){
     free(parent_path);
     free(resolved_path);
     yap_log("\t Importing and parsing file '%s'", display_path);
-    yap_parse_file(ctx, display_path, identity);
+    yap_parse_file(ctx, display_path, identity, yap_ts_node_loc(node, src));
     yap_log("\t Finished importing and parsing file '%s', back to %s", display_path, src->label);
     // free(parent_path);
     // free(resolved_path);

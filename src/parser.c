@@ -51,7 +51,7 @@ static yap_source_node* yap_get_cached_source_node(yap_parser* parser, const cha
     return found ? found->node : NULL;
 }
 
-void yap_parse_file(yap_ctx* ctx, char* path, char* absolute_path){
+void yap_parse_file(yap_ctx* ctx, char* path, char* absolute_path, yap_loc import_loc){
     yap_parser* parser = ctx->parser_ctx;
      if (!parser) {
         yap_log("Error: No parser context found in ctx");
@@ -63,6 +63,7 @@ void yap_parse_file(yap_ctx* ctx, char* path, char* absolute_path){
         yap_log("Error: Failed to create source for file '%s'", path);
         return;
     }
+    src->import_loc = import_loc;
     yap_ctx_push_source(ctx, src);
 
     // If absolute_path has been parsed before, skip reparsing and reuse the cached source node

@@ -578,7 +578,7 @@ module.exports = grammar({
       ']'
     ),
     //def num_literal
-    num_literal: $ => /\d+/,
+    num_literal: $ => /\d+(\.\d+)?/,
     //def bool_literal
     bool_literal: $ => choice("true", "false"),
     //def string_literal
