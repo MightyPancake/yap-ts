@@ -53,7 +53,7 @@ static void yap_log_node(yap_source* src, TSNode node, const char* fmt, ...){
 }
 
 yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
-    yap_log("\n\nPhase 1: Parsing\n");
+    yap_log("\n\n Parsing phase\n");
     yap_ctx* res = yap_ctx_init_ts_parser(ctx);
     if (darr_len(args.extra) == 0){
         printf("No source file provided\n");
