@@ -166,7 +166,7 @@ module.exports = grammar({
       $.var_decl,
       seq(
         field("type", choice($.anon_struct_type, $.anon_enum_type, $.anon_union_type)),
-        field("name", $.identifier),
+        optional(field("name", $.identifier)),
         optional(seq(
           field("assign", "="),
           field("default_value", $._expr)
@@ -214,7 +214,7 @@ module.exports = grammar({
     union_variants: $ => comma_sep($.union_variant),
     union_variant: $ => seq(
       field("type", $._type_annotation),
-      field("name", $.identifier),
+      optional(field("name", $.identifier)),
     ),
     anon_union_type: $ => seq(
       field("union", "union"),
@@ -546,6 +546,7 @@ module.exports = grammar({
       $.num_literal,
       $.string_literal,
       $.bool_literal,
+      $.null_literal,
       $.blob_literal, //blob literals can be cast to structs and arrays alike
       $.func_literal,
       //TODO:
@@ -579,6 +580,8 @@ module.exports = grammar({
     num_literal: $ => /\d+(\.\d+)?/,
     //def bool_literal
     bool_literal: $ => choice("true", "false"),
+    //def null_literal
+    null_literal: $ => "null",
     //def string_literal
     string_literal: $ => seq(
       field("start", choice('L"', 'u"', 'U"', 'u8"', '"')),
