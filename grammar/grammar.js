@@ -317,10 +317,8 @@ module.exports = grammar({
     continue_statement: $ => "continue",
     return_statement: $ => seq(
       field("return", "ret"),
-      choice(
-        field("value", $._expr),
-        field("empty", ";")
-      )
+      field("value", optional($._expr)),
+      ";"
     ),
     //def var_decl
     var_decl: $ => prec.right(PREC.VAR_DECL, seq(
@@ -651,9 +649,9 @@ module.exports = grammar({
     ),
     //def ast_blueprint
     ast_blueprint: $ => seq(
-      field("ast_start", "ast{"),
+      field("ast_start", "#["),
       optional(field("ast_content", $.non_empty_source)),
-      field("ast_end", '}'),
+      field("ast_end", ']'),
     ),
   }
 });
