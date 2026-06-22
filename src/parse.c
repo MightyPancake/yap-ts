@@ -86,20 +86,20 @@ darr(yap_var_decl_node) yap_parse_struct_fields(yap_source* src, TSNode fields_n
             darr_push(fields, yap_parse_var_decl(src, field_inner));
             continue;
         }
-        /* typed-field form: type name [ := default ] */
+        /* typed-field form: type [name] [ := default ] */
         yap_node_field_by_name_var(field_node, type);
         yap_node_field_by_name_var(field_node, name);
         yap_node_field_by_name_var(field_node, default_value);
-        if (ts_node_null_or_error(type_node) || ts_node_null_or_error(name_node)){
-            yap_push_parse_error(src, field_node, "Missing type or name in struct field");
+        if (ts_node_null_or_error(type_node)){
+            yap_push_parse_error(src, field_node, "Missing type in struct field");
             continue;
         }
         yap_var_decl_node v = {0};
-        v.name = yap_parse_identifier(src, name_node);
-        v.has_type = !ts_node_null_or_error(type_node);
-        if (v.has_type){
-            v.type_node = yap_ctx_one_cpy(ctx, yap_parse_type_node(src, type_node));
+        if (!ts_node_null_or_error(name_node)){
+            v.name = yap_parse_identifier(src, name_node);
         }
+        v.has_type = true;
+        v.type_node = yap_ctx_one_cpy(ctx, yap_parse_type_node(src, type_node));
         v.has_init = !ts_node_null_or_error(default_value_node);
         v.init = v.has_init ? yap_parse_expr(src, default_value_node) : (yap_expr_node){0};
         v.loc = yap_ts_node_loc(field_node, src);
@@ -143,12 +143,14 @@ darr(yap_var_decl_node) yap_parse_union_variants(yap_source* src, TSNode variant
     for_ts_named_children(variants_node, variant_node){
         yap_node_field_by_name_var(variant_node, type);
         yap_node_field_by_name_var(variant_node, name);
-        if (ts_node_null_or_error(type_node) || ts_node_null_or_error(name_node)){
-            yap_push_parse_error(src, variant_node, "Missing type or name in union variant");
+        if (ts_node_null_or_error(type_node)){
+            yap_push_parse_error(src, variant_node, "Missing type in union variant");
             continue;
         }
         yap_var_decl_node v = {0};
-        v.name = yap_parse_identifier(src, name_node);
+        if (!ts_node_null_or_error(name_node)){
+            v.name = yap_parse_identifier(src, name_node);
+        }
         v.has_type = true;
         v.type_node = yap_ctx_one_cpy(ctx, yap_parse_type_node(src, type_node));
         v.has_init = false;
@@ -743,6 +745,9 @@ yap_literal_node yap_parse_literal(yap_source* src, TSNode node){
     strus_case(typ, "bool_literal"){
         return yap_parse_bool_literal(src, node);
     }
+    strus_case(typ, "null_literal"){
+        return yap_parse_null_literal(src, node);
+    }
     strus_case(typ, "func_literal"){
         yap_push_parse_error(src, node, "Function literals are not supported yet");
         return (yap_literal_node){ .kind=yap_literal_error, .err=yap_node_error(src, node, "Function literals are not supported yet"), .loc=yap_ts_node_loc(node, src) };
@@ -826,7 +831,11 @@ yap_literal_node yap_parse_bool_literal(yap_source* src, TSNode node){
         };
     }
     char* text = yap_node_get_val_ctx(src, node);
-    return (yap_literal_node){ .kind=yap_literal_numerical, .numerical=text, .loc=yap_ts_node_loc(node, src) };
+    return (yap_literal_node){ .kind=yap_literal_bool, .numerical=text, .loc=yap_ts_node_loc(node, src) };
+}
+
+yap_literal_node yap_parse_null_literal(yap_source* src, TSNode node){
+    return (yap_literal_node){ .kind=yap_literal_null, .numerical="0", .loc=yap_ts_node_loc(node, src) };
 }
 
 yap_expr_node yap_parse_expr_literal(yap_source* src, TSNode node){

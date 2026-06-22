@@ -21,6 +21,7 @@ yap_literal_node yap_parse_literal(yap_source* src, TSNode node);
 yap_literal_node yap_parse_num_literal(yap_source* src, TSNode node);
 yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node);
 yap_literal_node yap_parse_bool_literal(yap_source* src, TSNode node);
+yap_literal_node yap_parse_null_literal(yap_source* src, TSNode node);
 yap_literal_node yap_parse_blob_literal(yap_source* src, TSNode node);
 
 //Statements
