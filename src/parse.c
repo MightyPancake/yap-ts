@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 yap_decl_node yap_parse_forward_type_decl(yap_source* src, TSNode node);
 
@@ -234,6 +235,7 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
 }
 
 yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
     yap_decl_node res = {.kind=yap_decl_error};
     if (ts_node_null_or_error(node)){
         yap_push_parse_error(src, node, "Invalid module import declaration");
@@ -250,6 +252,47 @@ yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
     }
     yap_identifier_node module_name = yap_parse_identifier(src, name_node);
     yap_log("Module import declaration: module='%s'", module_name.value ? module_name.value : "(anon)");
+
+    char* mod_path = NULL;
+    for_darr(i, lookup_path, ctx->module_lookup_paths){
+        char* candidate = strus_newf("%s/%s/mod.yap", lookup_path, module_name.value);
+        if (access(candidate, R_OK) == 0){
+            mod_path = candidate;
+            break;
+        }
+        free(candidate);
+    }
+
+    if (mod_path){
+        yap_log("Found module '%s' at '%s'", module_name.value, mod_path);
+        char* resolved = yap_resolve_path(mod_path);
+        char* identity = yap_ctx_strus_cpy(ctx, resolved);
+        char* display = yap_ctx_strus_newf(ctx, "%s/mod.yap", module_name.value);
+        free(mod_path);
+
+        yap_source* parent = yap_ctx_top_source(ctx);
+        if (parent){
+            yap_import imp = {
+                .kind = yap_import_module,
+                .module_name = yap_ctx_strus_cpy(ctx, module_name.value),
+                .loc = yap_ts_node_loc(node, src)
+            };
+            darr_push(parent->imports, imp);
+        }
+
+        size_t sources_before = darr_len(ctx->sources);
+        yap_parse_file(ctx, display, identity, yap_ts_node_loc(node, src));
+        free(resolved);
+
+        char* mod_tag = yap_ctx_strus_cpy(ctx, module_name.value);
+        for (size_t si = sources_before; si < darr_len(ctx->sources); si++){
+            if (ctx->sources[si])
+                ctx->sources[si]->from_module_import = mod_tag;
+        }
+    } else {
+        yap_push_parse_error(src, node, "Module '%s' not found in any lookup path", module_name.value);
+    }
+
     return (yap_decl_node){
         .kind=yap_decl_module_import,
         .module_import={
@@ -1153,8 +1196,22 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
     }strus_case(typ, "index_access"){
         return yap_parse_expr_index_access(src, node);
     }strus_case(typ, "module_access"){
-        yap_push_parse_error(src, node, "Unhandled expression");
-        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Unhandled expression"), .loc=yap_ts_node_loc(node, src) };
+        yap_log_node(src, node, "Parsing module access expression");
+        yap_node_field_by_name_var(node, module);
+        yap_node_field_by_name_var(node, field);
+        if (ts_node_null_or_error(module_node) || ts_node_null_or_error(field_node)){
+            yap_push_parse_error(src, node, "Invalid module access expression");
+            return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Invalid module access"), .loc=yap_ts_node_loc(node, src) };
+        }
+        return (yap_expr_node){
+            .kind=yap_expr_module_access,
+            .module_access={
+                .module=yap_parse_identifier(src, module_node),
+                .field=yap_parse_identifier(src, field_node),
+                .loc=yap_ts_node_loc(node, src),
+            },
+            .loc=yap_ts_node_loc(node, src)
+        };
     }strus_case(typ, "method_access"){
         yap_push_parse_error(src, node, "Unhandled expression");
         return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Unhandled expression"), .loc=yap_ts_node_loc(node, src) };
