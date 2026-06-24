@@ -706,6 +706,22 @@ yap_type_node yap_parse_type_node(yap_source* src, TSNode type_node){
         return (yap_type_node){ .kind = yap_type_node_anon_union, .anon_union = { .variants = v }, .loc = loc };
     }
 
+    if (strus_eq(tt, "array_type")){
+        yap_node_field_by_name_var(type_node, inner);
+        yap_node_field_by_name_var(type_node, size);
+        yap_type_node* elem = yap_ctx_one(ctx, yap_type_node);
+        *elem = yap_parse_type_node(src, inner_node);
+        yap_expr_node* sz = yap_ctx_one(ctx, yap_expr_node);
+        *sz = yap_parse_expr(src, size_node);
+        return (yap_type_node){ .kind = yap_type_node_array, .array_type = { .element_type = elem, .size_expr = sz }, .loc = loc };
+    }
+    if (strus_eq(tt, "slice_type")){
+        yap_node_field_by_name_var(type_node, inner);
+        yap_type_node* elem = yap_ctx_one(ctx, yap_type_node);
+        *elem = yap_parse_type_node(src, inner_node);
+        return (yap_type_node){ .kind = yap_type_node_slice, .slice_subtype = elem, .loc = loc };
+    }
+
     /* Fallback: treat as opaque identifier */
     return (yap_type_node){ .kind = yap_type_node_identifier, .identifier = yap_parse_identifier(src, type_node), .loc = loc };
 }
@@ -795,6 +811,7 @@ yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node){
     char* text = yap_node_get_val_ctx(src, node);
     size_t offset = 0;
     yap_string_literal_node str_lit = {0};
+    bool is_cstring = false;
     switch (text[0]){
         case 'L':
             offset = 2;
@@ -804,6 +821,10 @@ yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node){
             break;
         case 'U':
             offset = 2;
+            break;
+        case 'c':
+            offset = 2;
+            is_cstring = true;
             break;
         default:
             offset = 1;
@@ -815,7 +836,7 @@ yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node){
     str_lit.value[strlen(str_lit.value)-1] = '\0'; //remove closing quote
     yap_log("Parsed string literal: prefix='%s' value='%s'", str_lit.prefix, str_lit.value);
     return (yap_literal_node){
-        .kind=yap_literal_string,
+        .kind = is_cstring ? yap_literal_cstring : yap_literal_string,
         .string=str_lit,
         .loc=yap_ts_node_loc(node, src)
     };
@@ -1076,6 +1097,24 @@ yap_expr_node yap_parse_expr_member_access(yap_source* src, TSNode node){
     };
 }
 
+yap_expr_node yap_parse_expr_index_access(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, expr);
+    yap_node_field_by_name_var(node, index);
+    if (ts_node_null_or_error(expr_node) || ts_node_null_or_error(index_node)){
+        yap_push_parse_error(src, node, "Missing object or index in index access");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing object or index in index access"), .loc=yap_ts_node_loc(node, src) };
+    }
+    return (yap_expr_node){
+        .kind=yap_expr_index_access,
+        .index_access={
+            .object=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+            .index=yap_ctx_one_cpy(ctx, yap_parse_expr(src, index_node)),
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
 
 yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
     if (ts_node_null_or_error(node)){
@@ -1111,6 +1150,8 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_expr_ternary(src, node);
     }strus_case(typ, "member_access"){
         return yap_parse_expr_member_access(src, node);
+    }strus_case(typ, "index_access"){
+        return yap_parse_expr_index_access(src, node);
     }strus_case(typ, "module_access"){
         yap_push_parse_error(src, node, "Unhandled expression");
         return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Unhandled expression"), .loc=yap_ts_node_loc(node, src) };
