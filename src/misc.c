@@ -3,6 +3,9 @@
 #include "ts_yap.h"
 
 void yap_print_tree(TSNode node, int depth){
+    #ifndef YAP_DEBUG
+        return;
+    #endif
     for(int i=0;i<depth;i++) printf("  ");
     const char* str = ts_node_type(node);
     printf("%s %s %s %s %s"aesc_reset"\n",

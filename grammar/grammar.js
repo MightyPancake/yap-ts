@@ -265,6 +265,19 @@ module.exports = grammar({
       $.macro_type,
       $.paren_type,
       $.const_type,
+      $.slice_type,
+      $.array_type,
+    ),
+    array_type: $ => seq(
+      field("inner", $.typ),
+      field("open_bracket", '['),
+      field("size", $._expr),
+      field("close_bracket", ']'),
+    ),
+    slice_type: $ => seq(
+      field("inner", $.typ),
+      field("open_bracket", '['),
+      field("close_bracket", ']'),
     ),
     const: $ => "const",
     const_type: $ => seq(
@@ -484,6 +497,7 @@ module.exports = grammar({
       $.paren_expr,
       $.cast_expr, //TODO: Checks
       $.member_access, //NOT IMPLEMENTED YET
+      $.index_access, //NOT IMPLEMENTED YET
       $.incr_expr, //TODO: checks?
       $.method_access, //NOT IMPLEMENTED YET
       $.module_access, //NOT IMPLEMENTED YET
@@ -520,6 +534,13 @@ module.exports = grammar({
       field("object", $._expr),
       field("dot", '.'),
       field("member", $.identifier),
+    )),
+    //def index_access
+    index_access: $ => prec.left(PREC.FIELD, seq(
+      field("expr", $._expr),
+      field("open_bracket", ':['),
+      field("index", $._expr),
+      field("close_bracket", ']'),
     )),
     //def at_op
     at_op: $ => seq(
@@ -589,7 +610,7 @@ module.exports = grammar({
     null_literal: $ => "null",
     //def string_literal
     string_literal: $ => seq(
-      field("start", choice('L"', 'u"', 'U"', 'u8"', '"')),
+      field("start", choice('L"', 'u"', 'U"', 'u8"', 'c"', '"')),
       field("content", repeat(choice(
         alias(token.immediate(prec(1, /[^\\"\n]+/)), $.string_content),
         $.esc_seq,
