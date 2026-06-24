@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdbool.h>
 
+yap_decl_node yap_parse_forward_type_decl(yap_source* src, TSNode node);
+
 static void yap_push_parse_error(yap_source* src, TSNode node, const char* fmt, ...){
     if (!src || !src->ctx || !fmt) return;
 
@@ -202,6 +204,7 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
     const char* typ = ts_node_type(node);
     strus_switch(typ, "function_declaration"){
         res = yap_parse_func_decl(src, node);
+        res.kind = yap_decl_func_decl;
     }strus_case(typ, "function_definition"){
         res = yap_parse_func_decl(src, node);
     }strus_case(typ, "struct_declaration"){
@@ -212,6 +215,8 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
         res = yap_parse_union_decl(src, node);
     }strus_case(typ, "type_declaration"){
         res = yap_parse_type_declaration(src, node);
+    }strus_case(typ, "forward_type_declaration"){
+        res = yap_parse_forward_type_decl(src, node);
     }strus_case(typ, "module_import_declaration"){
         res = yap_parse_module_import_decl(src, node);
     }strus_case(typ, "file_import_declaration"){
@@ -342,6 +347,8 @@ yap_decl_node yap_parse_type_declaration(yap_source* src, TSNode node){
         return yap_parse_enum_decl(src, inner);
     }strus_case(typ, "union_declaration"){
         return yap_parse_union_decl(src, inner);
+    }strus_case(typ, "forward_type_declaration"){
+        return yap_parse_forward_type_decl(src, inner);
     }else{
         yap_push_parse_error(src, inner, "Unhandled type declaration");
         return (yap_decl_node){ .kind=yap_decl_error, .err=yap_node_error(src, inner, "Unhandled type declaration") };
@@ -386,7 +393,7 @@ yap_decl_node yap_parse_func_decl(yap_source* src, TSNode node){
     }
 
     return (yap_decl_node){
-        .kind=yap_decl_func,
+        .kind=yap_decl_func_def,
         .func_decl={
             .name=parsed_name,
             .args=args,
@@ -460,6 +467,25 @@ yap_decl_node yap_parse_union_decl(yap_source* src, TSNode node){
             .kind=yap_named_type_decl_union,
             .name=name,
             .as_union={ .variants = variants },
+        }
+    };
+}
+
+yap_decl_node yap_parse_forward_type_decl(yap_source* src, TSNode node){
+    yap_node_field_by_name_var(node, name);
+    yap_log_node(src, node, "Parsing forward type declaration");
+    if (ts_node_null_or_error(name_node)){
+        yap_push_parse_error(src, node, "Missing name in forward type declaration");
+        return (yap_decl_node){ .kind=yap_decl_error, .err=yap_node_error(src, node, "Missing name in forward type declaration") };
+    }
+
+    yap_identifier_node name = yap_parse_identifier(src, name_node);
+    yap_log("Forward type declaration: name='%s'", name.value ? name.value : "(anon)");
+    return (yap_decl_node){
+        .kind=yap_decl_named_type,
+        .named_type_decl={
+            .kind=yap_named_type_decl_alias,
+            .name=name,
         }
     };
 }
