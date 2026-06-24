@@ -140,6 +140,11 @@ module.exports = grammar({
       $.struct_declaration,
       $.enum_declaration,
       $.union_declaration,
+      $.forward_type_declaration,
+    ),
+    forward_type_declaration: $ => seq(
+      field("type", "type"),
+      field("name", $.identifier),
     ),
     //def struct_declaration
     //TODO: Rename to struct_definition
