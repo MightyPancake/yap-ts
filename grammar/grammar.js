@@ -571,14 +571,23 @@ module.exports = grammar({
     literal: $ => choice(
       $.num_literal,
       $.string_literal,
+      $.byte_literal,
       $.bool_literal,
       $.null_literal,
       $.blob_literal, //blob literals can be cast to structs and arrays alike
       $.func_literal,
       //TODO:
-      // char
       // hex
       // binary
+    ),
+    //def byte_literal
+    byte_literal: $ => seq(
+      "'",
+      field("content", choice(
+        alias(token.immediate(prec(1, /[^\\'\n]/)), $.byte_content),
+        $.esc_seq,
+      )),
+      "'"
     ),
     //def func_literal
     func_literal: $ => seq(

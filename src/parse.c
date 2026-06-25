@@ -833,6 +833,9 @@ yap_literal_node yap_parse_literal(yap_source* src, TSNode node){
     strus_case(typ, "null_literal"){
         return yap_parse_null_literal(src, node);
     }
+    strus_case(typ, "byte_literal"){
+        return yap_parse_byte_literal(src, node);
+    }
     strus_case(typ, "func_literal"){
         yap_push_parse_error(src, node, "Function literals are not supported yet");
         return (yap_literal_node){ .kind=yap_literal_error, .err=yap_node_error(src, node, "Function literals are not supported yet"), .loc=yap_ts_node_loc(node, src) };
@@ -926,6 +929,16 @@ yap_literal_node yap_parse_bool_literal(yap_source* src, TSNode node){
 
 yap_literal_node yap_parse_null_literal(yap_source* src, TSNode node){
     return (yap_literal_node){ .kind=yap_literal_null, .numerical="0", .loc=yap_ts_node_loc(node, src) };
+}
+
+yap_literal_node yap_parse_byte_literal(yap_source* src, TSNode node){
+    if (ts_node_null_or_error(node)){
+        yap_push_parse_error(src, node, "Invalid byte literal");
+        return (yap_literal_node){ .kind=yap_literal_error, .err=yap_node_error(src, node, "Invalid byte literal"), .loc=yap_ts_node_loc(node, src) };
+    }
+    char* text = yap_node_get_val_ctx(src, node);
+    yap_log("Parsed byte literal: '%s'", text);
+    return (yap_literal_node){ .kind=yap_literal_byte, .numerical=text, .loc=yap_ts_node_loc(node, src) };
 }
 
 yap_expr_node yap_parse_expr_literal(yap_source* src, TSNode node){
