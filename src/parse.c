@@ -889,6 +889,7 @@ yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node){
 }
 
 yap_literal_node yap_parse_blob_literal(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
     if (ts_node_null_or_error(node)){
         yap_push_parse_error(src, node, "Invalid blob literal");
         return (yap_literal_node){
@@ -897,8 +898,39 @@ yap_literal_node yap_parse_blob_literal(yap_source* src, TSNode node){
             .loc=yap_ts_node_loc(node, src)
         };
     }
-    char* text = yap_node_get_val_ctx(src, node);
-    return (yap_literal_node){ .kind=yap_literal_blob, .blob=text, .loc=yap_ts_node_loc(node, src) };
+    uint32_t count = ts_node_named_child_count(node);
+    darr(yap_blob_element_node) elements = yap_ctx_darr_new(ctx, yap_blob_element_node, .cap=count, .len=0);
+    for_ts_named_children(node, p){
+        const char* _pt = ts_node_type(p);
+        strus_switch(_pt, "named_param"){
+            yap_node_field_by_name_var(p, name);
+            yap_node_field_by_name_var(p, value);
+            if (!ts_node_null_or_error(name_node) && !ts_node_null_or_error(value_node)){
+                darr_push(elements, ((yap_blob_element_node){
+                    .is_named = true,
+                    .name = yap_parse_identifier(src, name_node),
+                    .value = yap_ctx_one_cpy(ctx, yap_parse_expr(src, value_node)),
+                    .loc = yap_ts_node_loc(p, src)
+                }));
+            }
+        }strus_case(_pt, "unnamed_param"){
+            TSNode expr_node = yap_parse_first_child(p);
+            darr_push(elements, ((yap_blob_element_node){
+                .is_named = false,
+                .name = (yap_identifier_node){0},
+                .value = yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+                .loc = yap_ts_node_loc(p, src)
+            }));
+        }else{
+            darr_push(elements, ((yap_blob_element_node){
+                .is_named = false,
+                .name = (yap_identifier_node){0},
+                .value = yap_ctx_one_cpy(ctx, yap_parse_expr(src, p)),
+                .loc = yap_ts_node_loc(p, src)
+            }));
+        }
+    }
+    return (yap_literal_node){ .kind=yap_literal_blob, .blob_elements=elements, .loc=yap_ts_node_loc(node, src) };
 }
 
 yap_literal_node yap_parse_num_literal(yap_source* src, TSNode node){
