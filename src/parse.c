@@ -166,6 +166,42 @@ darr(yap_var_decl_node) yap_parse_union_variants(yap_source* src, TSNode variant
     return variants;
 }
 
+static void yap_check_tree_errors_recursive(yap_source* src, TSNode node, int depth){
+    if (depth > 20) return;
+    uint32_t count = ts_node_child_count(node);
+    for (uint32_t i = 0; i < count; i++){
+        TSNode child = ts_node_child(node, i);
+        if (ts_node_is_missing(child)){
+            const char* typ = ts_node_type(child);
+            yap_push_parse_error(src, child, "Missing expected '%s'", typ ? typ : "token");
+            continue;
+        }
+        if (ts_node_is_error(child)){
+            uint32_t err_bytes = ts_node_end_byte(child) - ts_node_start_byte(child);
+            if (err_bytes <= 1) continue;
+            char* text = yap_node_get_val_ctx(src, child);
+            char preview[40] = {0};
+            if (text){
+                size_t len = 0;
+                for (size_t j = 0; j < 36 && text[j] && text[j] != '\n'; j++)
+                    preview[len++] = text[j];
+                if (text[len] && text[len] != '\n'){
+                    preview[len++] = '.'; preview[len++] = '.'; preview[len++] = '.';
+                }
+                preview[len] = '\0';
+            }
+            yap_push_parse_error(src, child, "Syntax error: '%s'", preview[0] ? preview : "?");
+            continue;
+        }
+        if (ts_node_has_error(child))
+            yap_check_tree_errors_recursive(src, child, depth + 1);
+    }
+}
+
+static void yap_check_tree_errors(yap_source* src, TSNode node){
+    yap_check_tree_errors_recursive(src, node, 0);
+}
+
 void yap_parse_source(yap_source* src){
     yap_ctx* ctx = src->ctx;
     yap_parser* parser = ctx->parser_ctx;
@@ -178,6 +214,10 @@ void yap_parse_source(yap_source* src){
     yap_log("Parsing source '%s', %u declarations", src->label, count);
 
     yap_print_tree(node, 0);
+
+    if (ts_node_has_error(node)){
+        yap_check_tree_errors(src, node);
+    }
 
     darr(yap_decl_node) decls = yap_ctx_darr_new(ctx, yap_decl_node, .cap=count, .len=0);
     for_ts_named_children(node, n){
@@ -1246,84 +1286,84 @@ yap_macro_call_node yap_parse_macro_call(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, macro_call);
     if (ts_node_null_or_error(macro_call_node)){
-        yap_push_parse_error(src, node, "Invalid macro call");
+        yap_push_parse_error(src, node, "Invalid comptime call");
         return (yap_macro_call_node){ .loc=yap_ts_node_loc(node, src) };
     }
 
-    const char* call_type = ts_node_type(macro_call_node);
-    bool is_paramless = strus_eq(call_type, "paramless_macro_call");
-
     yap_node_field_by_name_var(macro_call_node, caller);
     if (ts_node_null_or_error(caller_node)){
-        yap_push_parse_error(src, node, "Missing caller in macro call");
+        yap_push_parse_error(src, node, "Missing caller in comptime call");
         return (yap_macro_call_node){ .loc=yap_ts_node_loc(node, src) };
     }
 
     TSNode caller_inner = yap_parse_first_child(caller_node);
-    if (ts_node_null_or_error(caller_inner)){
+    if (ts_node_null_or_error(caller_inner))
         caller_inner = caller_node;
-    }
     yap_expr_node* caller_expr = yap_ctx_one_cpy(ctx, yap_parse_expr(src, caller_inner));
 
     darr(yap_macro_param_node) params = yap_ctx_darr_new(ctx, yap_macro_param_node, .cap=0, .len=0);
 
-    if (!is_paramless){
-        yap_node_field_by_name_var(macro_call_node, params);
-        if (!ts_node_null_or_error(params_node)){
-            uint32_t count = ts_node_named_child_count(params_node);
-            params = yap_ctx_darr_new(ctx, yap_macro_param_node, .cap=count, .len=0);
-            for_ts_named_children(params_node, p){
-                TSNode inner_p = p;
-                if (strus_eq(ts_node_type(p), "macro_param")){
-                    inner_p = yap_parse_first_child(p);
-                    if (ts_node_null_or_error(inner_p)) inner_p = p;
-                }
-                const char* pt = ts_node_type(inner_p);
-                strus_switch(pt, "named_param"){
-                    yap_node_field_by_name_var(inner_p, name);
-                    yap_node_field_by_name_var(inner_p, value);
-                    darr_push(params, ((yap_macro_param_node){
-                        .kind=yap_macro_param_named,
-                        .named={
-                            .name=yap_parse_identifier(src, name_node),
-                            .value=ts_node_null_or_error(value_node) ? NULL : yap_ctx_one_cpy(ctx, yap_parse_expr(src, value_node)),
-                        },
-                        .loc=yap_ts_node_loc(inner_p, src),
-                    }));
-                }strus_case(pt, "unnamed_param"){
-                    TSNode expr_inner = yap_parse_first_child(inner_p);
-                    darr_push(params, ((yap_macro_param_node){
-                        .kind=yap_macro_param_unnamed,
-                        .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_inner)),
-                        .loc=yap_ts_node_loc(inner_p, src),
-                    }));
-                }strus_case(pt, "identifier_adding_param"){
-                    yap_node_field_by_name_var(inner_p, name);
-                    darr_push(params, ((yap_macro_param_node){
-                        .kind=yap_macro_param_ident_add,
-                        .ident_add=yap_parse_identifier(src, name_node),
-                        .loc=yap_ts_node_loc(inner_p, src),
-                    }));
-                }strus_case(pt, "macro_mut_param"){
-                    yap_node_field_by_name_var(inner_p, expr);
-                    darr_push(params, ((yap_macro_param_node){
-                        .kind=yap_macro_param_mut,
-                        .mut_expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
-                        .loc=yap_ts_node_loc(inner_p, src),
-                    }));
-                }else{
-                    darr_push(params, ((yap_macro_param_node){
-                        .kind=yap_macro_param_statement,
-                        .statement=yap_ctx_one_cpy(ctx, yap_parse_statement(src, inner_p)),
-                        .loc=yap_ts_node_loc(inner_p, src),
-                    }));
-                }
+    yap_node_field_by_name_var(macro_call_node, params);
+    if (!ts_node_null_or_error(params_node)){
+        uint32_t count = ts_node_named_child_count(params_node);
+        params = yap_ctx_darr_new(ctx, yap_macro_param_node, .cap=count, .len=0);
+        for_ts_named_children(params_node, p){
+            TSNode inner_p = p;
+            if (strus_eq(ts_node_type(p), "macro_param")){
+                inner_p = yap_parse_first_child(p);
+                if (ts_node_null_or_error(inner_p)) inner_p = p;
+            }
+            const char* pt = ts_node_type(inner_p);
+            strus_switch(pt, "named_param"){
+                yap_node_field_by_name_var(inner_p, name);
+                yap_node_field_by_name_var(inner_p, value);
+                darr_push(params, ((yap_macro_param_node){
+                    .kind=yap_macro_param_named,
+                    .named={
+                        .name=yap_parse_identifier(src, name_node),
+                        .value=ts_node_null_or_error(value_node) ? NULL : yap_ctx_one_cpy(ctx, yap_parse_expr(src, value_node)),
+                    },
+                    .loc=yap_ts_node_loc(inner_p, src),
+                }));
+            }strus_case(pt, "unnamed_param"){
+                TSNode expr_inner = yap_parse_first_child(inner_p);
+                darr_push(params, ((yap_macro_param_node){
+                    .kind=yap_macro_param_unnamed,
+                    .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_inner)),
+                    .loc=yap_ts_node_loc(inner_p, src),
+                }));
+            }strus_case(pt, "ast_param"){
+                yap_node_field_by_name_var(inner_p, expr);
+                darr_push(params, ((yap_macro_param_node){
+                    .kind=yap_macro_param_ast,
+                    .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+                    .loc=yap_ts_node_loc(inner_p, src),
+                }));
+            }strus_case(pt, "identifier_adding_param"){
+                yap_node_field_by_name_var(inner_p, name);
+                darr_push(params, ((yap_macro_param_node){
+                    .kind=yap_macro_param_ident_add,
+                    .ident_add=yap_parse_identifier(src, name_node),
+                    .loc=yap_ts_node_loc(inner_p, src),
+                }));
+            }strus_case(pt, "macro_mut_param"){
+                yap_node_field_by_name_var(inner_p, expr);
+                darr_push(params, ((yap_macro_param_node){
+                    .kind=yap_macro_param_mut,
+                    .mut_expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+                    .loc=yap_ts_node_loc(inner_p, src),
+                }));
+            }else{
+                darr_push(params, ((yap_macro_param_node){
+                    .kind=yap_macro_param_statement,
+                    .statement=yap_ctx_one_cpy(ctx, yap_parse_statement(src, inner_p)),
+                    .loc=yap_ts_node_loc(inner_p, src),
+                }));
             }
         }
     }
 
     return (yap_macro_call_node){
-        .is_paramless=is_paramless,
         .caller=caller_expr,
         .params=params,
         .loc=yap_ts_node_loc(node, src),

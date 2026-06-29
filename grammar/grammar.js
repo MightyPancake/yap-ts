@@ -62,9 +62,7 @@ module.exports = grammar({
   name: "yap",
   conflicts: $ => [
     [$._func_decl_core, $._expr],
-    [$.macro_declaration, $.macro_statement, $.macro_expr, $.macro_type],
-    [$.macro_statement, $.macro_expr],
-    [$.macro_statement, $.macro_type],
+    [$.macro_declaration, $.macro_expr, $.macro_type],
     [$.macro_expr, $.macro_type],
     [$.typ, $._expr],
   ],
@@ -313,7 +311,6 @@ module.exports = grammar({
     statement: $ => $._statement,
     _statement: $ => choice(
       $.block,
-      $.macro_statement, //TODO
       $._var_decl_statement,
       $.expr_statement,
       $.if_statement,
@@ -639,23 +636,14 @@ module.exports = grammar({
     ))),
     //def identifier
     identifier : $ => /[a-zA-Z_]\w*/ ,
-    //def _macro_call
+    //def _macro_call — comptime call syntax: func:(args)
     _macro_call: $ => prec.right(seq(
-      field("macro_call", choice(
-        $.paramless_macro_call,
-        $.param_macro_call
-      )),
-      // optional(field("macro_block", seq(":", $.block)))
+      field("macro_call", $.comptime_call),
     )),
-    //def paramless_macro_call
-    paramless_macro_call: $ => seq(
+    //def comptime_call
+    comptime_call: $ => seq(
       field("caller", $.macro_caller),
-      field("macro_op", '#')
-    ),
-    //def param_macro_call
-    param_macro_call: $ => seq(
-      field("caller", $.macro_caller),
-      field("macro_call_op", "#("),
+      field("comptime_call_op", ":("),
       field("params", optional($.macro_params)),
       field("close_paren", ')')
     ),
@@ -665,9 +653,15 @@ module.exports = grammar({
     macro_param: $ => choice(
       $.named_param,
       $.unnamed_param,
+      $.ast_param,
       $._statement,
       $.identifier_adding_param,
       $.macro_mut_param,
+    ),
+    //def ast_param — pass expression as yExpr AST node: #expr
+    ast_param: $ => seq(
+      field("ast_op", "#"),
+      field("expr", $._expr),
     ),
     //def identifier_adding_param
     identifier_adding_param: $ => seq(
