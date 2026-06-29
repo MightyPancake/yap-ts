@@ -54,11 +54,15 @@ yap_ts:
 	@echo $(GREEN)Done!$(RESET)
 
 grammar:
-	@echo $(PURPLE)Generating grammar$(RESET)
-	cd grammar && tree-sitter generate
-	$(MV) ./src/parser.c ../src/tree_sitter_yap.c
-	$(RM) Cargo.toml binding.gyp bindings package.json src
-	@echo $(GREEN)Done!$(RESET)
+	@if command -v tree-sitter >/dev/null 2>&1; then \
+		echo "$(PURPLE)Generating grammar$(RESET)"; \
+		cd grammar && tree-sitter generate; \
+		$(MV) ./src/parser.c ../src/tree_sitter_yap.c; \
+		$(RM) Cargo.toml binding.gyp bindings package.json src; \
+		echo "$(GREEN)Done!$(RESET)"; \
+	else \
+		echo "$(CYAN)tree-sitter not found, using pre-generated parser$(RESET)"; \
+	fi
 
 
 ready_ts:
