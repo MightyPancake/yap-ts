@@ -667,17 +667,17 @@ module.exports = grammar({
       $.unnamed_param,
       $._statement,
       $.identifier_adding_param,
-      $.macro_mod_param,
+      $.macro_mut_param,
     ),
     //def identifier_adding_param
     identifier_adding_param: $ => seq(
       field("identifier_adding_op", "+"),
       field("name", $.identifier),
     ),
-    //def modifying_macro_param
-    macro_mod_param: $ => seq(
-      field("macro_mod_param", '$'),
-      field("expr", $._expr)
+    //def macro_mut_param
+    macro_mut_param: $ => seq(
+      field("expr", $._expr),
+      field("mut_op", "=")
     ),
     //def macro_caller
     macro_caller: $ => choice(
@@ -685,11 +685,36 @@ module.exports = grammar({
       $.module_access,
       $.method_access,
     ),
+    //def expr_blueprint
+    expr_blueprint: $ => seq(
+      field("expr_start", "$("),
+      optional(field("expr_content", $.non_empty_source)),
+      field("expr_end", ')'),
+    ),
+    //def statement_blueprint
+    statement_blueprint: $ => seq(
+      field("statement_start", "${"),
+      optional(field("statement_content", $.non_empty_source)),
+      field("statement_end", '}'),
+    ),
+    //def declaration_blueprint
+    declaration_blueprint: $ => seq(
+      field("declaration_start", "$["),
+      optional(field("declaration_content", $.non_empty_source)),
+      field("declaration_end", ']'),
+    ),
     //def ast_blueprint
     ast_blueprint: $ => seq(
-      field("ast_start", "#["),
+      field("ast_start", "$<"),
       optional(field("ast_content", $.non_empty_source)),
-      field("ast_end", ']'),
+      field("ast_end", '>'),
+    ),
+    //blueprint_literal
+    blueprint_literal: $ => choice(
+      $.expr_blueprint,
+      $.statement_blueprint,
+      //$.declaration_blueprint,
+      //$.ast_blueprint,
     ),
   }
 });
