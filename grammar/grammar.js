@@ -95,13 +95,13 @@ module.exports = grammar({
     comment: $ => $._comment,
     //def _defintion
     _declaration: $ => choice(
-      $.module_declaration, //TODO: Creates a module
-      $.module_import_declaration, //TODO: Imports a module
-      $.file_import_declaration, //TODO: Imports a file
-      $.function_declaration, //TODO: Implement
-      $.function_definition, //TODO: Checks/default params. Can emit to global or another module
-      $.type_declaration, //TODO: Finish? Forward / num declarations. Can emit to global or another module
-      $._statement, //Still being done I guess. Emits into current module.
+      $.module_declaration,
+      $.module_import_declaration,
+      $.file_import_declaration,
+      $.function_declaration,
+      $.function_definition,
+      $.type_declaration,
+      $._statement, //Emits into current module.
     ),
     //def module_declaration
     module_declaration: $ => seq(
@@ -359,30 +359,44 @@ module.exports = grammar({
       )
     ),
     //def for_loop
+    //The condition is parenthesized (like C) so there's a hard boundary
+    //between it and the body - without one, a brace-less body leaves the
+    //GLR parser to guess where the condition ends (see e.g. the deref_expr
+    //vs member_access ambiguity this resolves: "for (...; p.field; ...) body"
+    //has no ambiguity, whereas a bare "for (...; p.field; ...) body" without
+    //parens would).
     for_loop: $ => seq(
       field("for", "for"),
+      field("open_paren", '('),
       field("init", $._statement), //start (carries its own trailing ';')
       field("condition", $._expr), //condition
       field("semicolon", ';'),
       field("update", $._expr), //step (this should be a statement, but C forces expressions)
+      field("close_paren", ')'),
       field("body", $._statement)
     ),
     //def while_loop
     while_loop: $ => seq(
       field("while", "while"),
+      field("open_paren", '('),
       field("condition", $._expr),
+      field("close_paren", ')'),
       field("body", $._statement)
     ),
     //def if_statement
     if_statement: $ => prec.right(PREC.IF, seq(
       field("if", "if"),
+      field("open_paren", '('),
       field("condition", $._expr),
+      field("close_paren", ')'),
       field("then_branch", $._statement)
     )),
     //def if_else_statement
     if_else_statement: $ => prec.right(PREC.IF_ELSE, seq(
       field("if", "if"),
+      field("open_paren", '('),
       field("condition", $._expr),
+      field("close_paren", ')'),
       field("then_branch", $._statement),
       field("else", "else"),
       field("else_branch", $._statement),
@@ -488,18 +502,20 @@ module.exports = grammar({
       $.assignment, //TODO: Finish/checks
       $.at_op, //TODO: Checks
       $.ternary_expr,
-      $.func_call, //TODO: Finish
-      $.block_expr, //NOT IMPLEMENTED YET
+      $.func_call,
+      $.block_expr, //NOT IMPLEMENTED: parses, but yap_build_expr (build.c) has no case for yap_expr_block yet
       $.paren_expr,
-      $.cast_expr, //TODO: Checks
-      $.member_access, //NOT IMPLEMENTED YET
-      $.index_access, //NOT IMPLEMENTED YET
-      $.incr_expr, //TODO: checks?
-      $.method_access, //NOT IMPLEMENTED YET
-      $.module_access, //NOT IMPLEMENTED YET
-      $.comp_op, //NOT IMPLEMENTED YET
-      $.ast_blueprint,
-      $.macro_expr, //NOT IMPLEMENTED YET
+      $.cast_expr,
+      $.member_access,
+      $.optional_member_access,
+      $.deref_expr,
+      $.index_access,
+      $.incr_expr,
+      $.method_access, //NOT IMPLEMENTED: parser hard-stubs this as "Unhandled expression" (parse.c); only handled as a var-decl shorthand inside expr_statement, not as method dispatch
+      $.module_access,
+      $.comp_op,
+      $.ast_blueprint, //NOT IMPLEMENTED: parses but no semantic/codegen handling — see blueprint_literal
+      $.macro_expr,
     ),
     //def macro_expr
     macro_expr: $ => $._macro_call,
@@ -529,6 +545,17 @@ module.exports = grammar({
     member_access: $ => prec.left(PREC.FIELD, seq(
       field("object", $._expr),
       field("dot", '.'),
+      field("member", $.identifier),
+    )),
+    //def deref_expr
+    deref_expr: $ => prec.left(PREC.FIELD, seq(
+      field("expr", $._expr),
+      field("dot", '.'),
+    )),
+    //def optional_member_access
+    optional_member_access: $ => prec.left(PREC.FIELD, seq(
+      field("object", $._expr),
+      field("dot", '?.'),
       field("member", $.identifier),
     )),
     //def index_access
@@ -678,31 +705,31 @@ module.exports = grammar({
       $.module_access,
       $.method_access,
     ),
-    //def expr_blueprint
+    //def expr_blueprint — NOT IMPLEMENTED: grammar only, no parser/semantic handling anywhere
     expr_blueprint: $ => seq(
       field("expr_start", "$("),
       optional(field("expr_content", $.non_empty_source)),
       field("expr_end", ')'),
     ),
-    //def statement_blueprint
+    //def statement_blueprint — NOT IMPLEMENTED: grammar only, no parser/semantic handling anywhere
     statement_blueprint: $ => seq(
       field("statement_start", "${"),
       optional(field("statement_content", $.non_empty_source)),
       field("statement_end", '}'),
     ),
-    //def declaration_blueprint
+    //def declaration_blueprint — NOT IMPLEMENTED, unreachable (not wired into blueprint_literal)
     declaration_blueprint: $ => seq(
       field("declaration_start", "$["),
       optional(field("declaration_content", $.non_empty_source)),
       field("declaration_end", ']'),
     ),
-    //def ast_blueprint
+    //def ast_blueprint — NOT IMPLEMENTED: reachable from _expr but no parser/semantic handling
     ast_blueprint: $ => seq(
       field("ast_start", "$<"),
       optional(field("ast_content", $.non_empty_source)),
       field("ast_end", '>'),
     ),
-    //blueprint_literal
+    //blueprint_literal — unused: not referenced by `literal` or any other rule
     blueprint_literal: $ => choice(
       $.expr_blueprint,
       $.statement_blueprint,
@@ -713,8 +740,8 @@ module.exports = grammar({
 });
 
 //TODO:
-// C ABI
+// C ABI (bindgen.c/libclang header import exists as a standalone tool — not wired into the main compile pipeline)
 // struct unpacking
-// ?? and ?.field
-// call chaining
-// macros
+// ?? (null coalescing) — ?.field (optional chaining) is implemented
+// call chaining / true method-call dispatch (method_access)
+// blueprints ($(), ${}, $<>)

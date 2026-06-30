@@ -1280,6 +1280,42 @@ yap_expr_node yap_parse_expr_member_access(yap_source* src, TSNode node){
     };
 }
 
+yap_expr_node yap_parse_expr_optional_member_access(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, object);
+    yap_node_field_by_name_var(node, member);
+    if (ts_node_null_or_error(object_node) || ts_node_null_or_error(member_node)){
+        yap_push_parse_error(src, node, "Missing object or member in optional member access");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing object or member in optional member access"), .loc=yap_ts_node_loc(node, src) };
+    }
+    return (yap_expr_node){
+        .kind=yap_expr_optional_member_access,
+        .member_access={
+            .object=yap_ctx_one_cpy(ctx, yap_parse_expr(src, object_node)),
+            .member=yap_parse_identifier(src, member_node),
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
+yap_expr_node yap_parse_expr_deref(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, expr);
+    if (ts_node_null_or_error(expr_node)){
+        yap_push_parse_error(src, node, "Missing operand in dereference");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing operand in dereference"), .loc=yap_ts_node_loc(node, src) };
+    }
+    return (yap_expr_node){
+        .kind=yap_expr_deref,
+        .deref={
+            .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
 yap_expr_node yap_parse_expr_index_access(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, expr);
@@ -1421,6 +1457,10 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_expr_ternary(src, node);
     }strus_case(typ, "member_access"){
         return yap_parse_expr_member_access(src, node);
+    }strus_case(typ, "optional_member_access"){
+        return yap_parse_expr_optional_member_access(src, node);
+    }strus_case(typ, "deref_expr"){
+        return yap_parse_expr_deref(src, node);
     }strus_case(typ, "index_access"){
         return yap_parse_expr_index_access(src, node);
     }strus_case(typ, "module_access"){
