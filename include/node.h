@@ -25,7 +25,7 @@
 
 //These require to be freed after use
 #define yap_node_get_val(SRC, NODE) (strndup(yap_node_val_start(SRC, NODE), ts_node_end_byte(NODE) - ts_node_start_byte(NODE)))
-#define yap_node_val(NODE) char* NODE##_val = yap_node_get_val(src, NODE);
+#define yap_node_val(NODE) char* NODE##_val __attribute__((unused)) = yap_node_get_val(src, NODE);
 #define yap_node_get_val_ctx(SRC, NODE) ({ \
   uint32_t _yap_node_start = ts_node_start_byte((NODE)); \
   uint32_t _yap_node_end = ts_node_end_byte((NODE)); \
@@ -38,7 +38,7 @@
   } \
   _yap_node_out; \
 })
-#define yap_node_val_ctx(NODE) char* NODE##_val = yap_node_get_val_ctx(src, NODE);
+#define yap_node_val_ctx(NODE) char* NODE##_val __attribute__((unused)) = yap_node_get_val_ctx(src, NODE);
 #define yap_node_str(NODE) char* NODE##_str = ts_node_string(NODE)
 
 #define for_ts_children(N, C) for(TSNode C=ts_node_child(N, 0); !ts_node_is_null(C); C=ts_node_next_sibling(C))
