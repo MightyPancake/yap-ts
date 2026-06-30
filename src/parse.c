@@ -1280,6 +1280,25 @@ yap_expr_node yap_parse_expr_member_access(yap_source* src, TSNode node){
     };
 }
 
+yap_expr_node yap_parse_expr_method_access(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, caller);
+    yap_node_field_by_name_var(node, name);
+    if (ts_node_null_or_error(caller_node) || ts_node_null_or_error(name_node)){
+        yap_push_parse_error(src, node, "Missing caller or name in method access");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing caller or name in method access"), .loc=yap_ts_node_loc(node, src) };
+    }
+    return (yap_expr_node){
+        .kind=yap_expr_method_access,
+        .method_access={
+            .caller=yap_ctx_one_cpy(ctx, yap_parse_expr(src, caller_node)),
+            .name=yap_parse_identifier(src, name_node),
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
 yap_expr_node yap_parse_expr_optional_member_access(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, object);
@@ -1481,8 +1500,7 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
             .loc=yap_ts_node_loc(node, src)
         };
     }strus_case(typ, "method_access"){
-        yap_push_parse_error(src, node, "Unhandled expression");
-        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Unhandled expression"), .loc=yap_ts_node_loc(node, src) };
+        return yap_parse_expr_method_access(src, node);
     }strus_case(typ, "comp_op"){
         return yap_parse_expr_comp(src, node);
     }strus_case(typ, "block_expr"){

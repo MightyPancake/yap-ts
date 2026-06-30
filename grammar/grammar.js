@@ -511,7 +511,7 @@ module.exports = grammar({
       $.deref_expr,
       $.index_access,
       $.incr_expr,
-      $.method_access, //NOT IMPLEMENTED: parser hard-stubs this as "Unhandled expression" (parse.c); only handled as a var-decl shorthand inside expr_statement, not as method dispatch
+      $.method_access, //method dispatch (parse.c, build.c) when called as 'obj:name(args)'; bare 'Type:name;' statements are still reinterpreted as an uninitialized var-decl shorthand
       $.module_access,
       $.comp_op,
       $.ast_blueprint, //NOT IMPLEMENTED: parses but no semantic/codegen handling — see blueprint_literal
@@ -743,5 +743,4 @@ module.exports = grammar({
 // C ABI (bindgen.c/libclang header import exists as a standalone tool — not wired into the main compile pipeline)
 // struct unpacking
 // ?? (null coalescing) — ?.field (optional chaining) is implemented
-// call chaining / true method-call dispatch (method_access)
 // blueprints ($(), ${}, $<>)
