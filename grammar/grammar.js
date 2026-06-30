@@ -361,10 +361,9 @@ module.exports = grammar({
     //def for_loop
     for_loop: $ => seq(
       field("for", "for"),
-      field("init", $._statement), //start
-      field("comma1", ','),
+      field("init", $._statement), //start (carries its own trailing ';')
       field("condition", $._expr), //condition
-      field("comma2", ','),
+      field("semicolon", ';'),
       field("update", $._expr), //step (this should be a statement, but C forces expressions)
       field("body", $._statement)
     ),

@@ -30,7 +30,7 @@ static void yap_log_node(yap_source* src, TSNode node, const char* fmt, ...){
     if (!src) return;
     
     char* node_val = yap_node_get_val_ctx(src, node);
-    char val_display[14] = {0};
+    char val_display[14] __attribute__((unused)) = {0};
     if (node_val){
         size_t len = 0;
         for (size_t i = 0; i < 10 && node_val[i]; i++){
