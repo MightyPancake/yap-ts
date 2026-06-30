@@ -477,8 +477,20 @@ yap_decl_node yap_parse_func_decl(yap_source* src, TSNode node){
     }
 
     yap_node_field_var(subject_node, node, "subject");
-    if (!ts_node_null_or_error(subject_node)){
-        yap_push_parse_error(src, subject_node, "Function subjects are not supported yet");
+    bool has_subject = !ts_node_null_or_error(subject_node);
+    yap_type_node* subject_type_node = NULL;
+    yap_identifier_node subject_name = {0};
+    if (has_subject){
+        yap_node_field_by_name_var(subject_node, type);
+        yap_node_field_by_name_var(subject_node, name);
+        if (ts_node_null_or_error(type_node) || ts_node_null_or_error(name_node)){
+            yap_push_parse_error(src, subject_node, "Missing subject type or name");
+        }else{
+            yap_ctx* _ctx = src->ctx;
+            yap_type_node parsed_subject_type = yap_parse_type_node(src, type_node);
+            subject_type_node = yap_ctx_one_cpy(_ctx, parsed_subject_type);
+            subject_name = yap_parse_identifier(src, name_node);
+        }
     }
 
     yap_node_field_var(args_node, node, "args");
@@ -505,6 +517,9 @@ yap_decl_node yap_parse_func_decl(yap_source* src, TSNode node){
             .args=args,
             .has_return_type=has_return_type,
             .return_type_node=rt_node,
+            .has_subject=has_subject,
+            .subject_type_node=subject_type_node,
+            .subject_name=subject_name,
             .body=ts_node_null_or_error(body_node) ? (yap_block_node){0} : yap_parse_block(src, body_node),
             .loc=yap_ts_node_loc(node, src),
         }

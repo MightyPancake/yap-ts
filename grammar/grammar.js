@@ -241,16 +241,20 @@ module.exports = grammar({
       field("return_type", optional($.typ)),
       field("fn", "fn"),
       optional(
-        field("subject", seq(
-          field("type", $.typ),
+        seq(
+          field("subject", $.func_subject),
           ":"
-          )
         )
       ),
       field("name", $.identifier),
       "(",
       field("args", optional($.func_decl_args)),
       ")",
+    ),
+    //def func_subject
+    func_subject: $ => seq(
+      field("type", $.typ),
+      field("name", $.identifier),
     ),
     //def func_decl_args
     func_decl_args: $ => comma_sep($.var_decl),
