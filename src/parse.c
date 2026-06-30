@@ -8,8 +8,25 @@ yap_decl_node yap_parse_forward_type_decl(yap_source* src, TSNode node);
 yap_statement_node yap_parse_statement(yap_source* src, TSNode node);
 yap_macro_call_node yap_parse_macro_call(yap_source* src, TSNode node);
 
+static bool yap_error_already_reported(yap_ctx* ctx, yap_source* src, TSNode node){
+    uint32_t start = ts_node_start_byte(node);
+    uint32_t end = ts_node_end_byte(node);
+    for_darr(i, err, ctx->errors){
+        if (err.src == src && (uint32_t)err.range.start.offset == start && (uint32_t)err.range.end.offset == end)
+            return true;
+    }
+    return false;
+}
+
 static void yap_push_parse_error(yap_source* src, TSNode node, const char* fmt, ...){
     if (!src || !src->ctx || !fmt) return;
+
+    // yap_check_tree_errors() already walks the whole tree once up front and
+    // reports every genuine tree-sitter ERROR node; AST-building code below
+    // re-visits the same broken node while building decls/statements/exprs,
+    // so without this check the same syntax error gets reported twice.
+    if (ts_node_is_error(node) && yap_error_already_reported(src->ctx, src, node))
+        return;
 
     va_list ap;
     va_start(ap, fmt);

@@ -90,6 +90,6 @@ clean:
 	$(RM) $(TS_LIB) $(YAP_TS_LIB)
 
 copy:
-	rsync -a --exclude='.git' ./ $(shell yap -m)/yap-ts/
-	cp ./test/test.yap $(shell yap -m)../examples/
+	rsync -a --exclude='.git' ./ $(shell yap -C)/yap-ts/
+	cp ./test/test.yap $(shell yap -C)../examples/
 
