@@ -881,6 +881,79 @@ yap_identifier_node yap_parse_identifier(yap_source* src, TSNode node){
     return (yap_identifier_node){ .value=yap_node_get_val_ctx(src, node), .loc=yap_ts_node_loc(node, src) };
 }
 
+static yap_func_arg_node yap_parse_func_literal_param(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_field_by_name_var(node, type);
+    yap_node_field_by_name_var(node, name);
+    if (ts_node_null_or_error(type_node) || ts_node_null_or_error(name_node)){
+        yap_push_parse_error(src, node, "Missing parameter name or type in function literal");
+        return (yap_func_arg_node){
+            .err=yap_node_error(src, node, "Missing parameter name or type in function literal"),
+            .is_valid=false,
+            .loc=yap_ts_node_loc(node, src)
+        };
+    }
+    yap_identifier_node param_name = yap_parse_identifier(src, name_node);
+    yap_type_node param_type = yap_parse_type_node(src, type_node);
+    yap_log("Function literal param: name='%s'", param_name.value ? param_name.value : "(anon)");
+    return (yap_func_arg_node){
+        .name=param_name,
+        .has_type=true,
+        .type_node=yap_ctx_one_cpy(ctx, param_type),
+        .has_default=false,
+        .is_valid=true,
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
+static darr(yap_func_arg_node) yap_parse_func_literal_params(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    if (ts_node_is_null(node) || ts_node_has_error(node)){
+        return yap_ctx_darr_new(ctx, yap_func_arg_node, .cap=0, .len=0);
+    }
+    uint32_t count = ts_node_named_child_count(node);
+    darr(yap_func_arg_node) params = yap_ctx_darr_new(ctx, yap_func_arg_node, .cap=count, .len=0);
+    for_ts_named_children(node, n){
+        darr_push(params, yap_parse_func_literal_param(src, n));
+    }
+    return params;
+}
+
+yap_literal_node yap_parse_func_literal(yap_source* src, TSNode node){
+    yap_ctx* ctx = src->ctx;
+    yap_node_field_by_name_var(node, return_type);
+    yap_node_field_by_name_var(node, func_literal_params);
+    yap_node_field_by_name_var(node, body);
+
+    if (ts_node_null_or_error(body_node)){
+        yap_push_parse_error(src, node, "Missing body in function literal");
+        return (yap_literal_node){ .kind=yap_literal_error, .err=yap_node_error(src, node, "Missing body in function literal"), .loc=yap_ts_node_loc(node, src) };
+    }
+
+    bool has_return_type = !ts_node_null_or_error(return_type_node);
+    yap_type_node* return_type = NULL;
+    if (has_return_type){
+        yap_type_node rt = yap_parse_type_node(src, return_type_node);
+        return_type = yap_ctx_one_cpy(ctx, rt);
+    }
+
+    darr(yap_func_arg_node) args = yap_parse_func_literal_params(src, func_literal_params_node);
+    yap_block_node body = yap_parse_block(src, body_node);
+    yap_log("Parsed function literal: %u params, return type %s",
+        (unsigned)darr_len(args), has_return_type ? "present" : "none");
+    return (yap_literal_node){
+        .kind=yap_literal_func,
+        .func_literal=(yap_func_literal_node){
+            .args=args,
+            .has_return_type=has_return_type,
+            .return_type_node=return_type,
+            .body=body,
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
 yap_literal_node yap_parse_literal(yap_source* src, TSNode node){
     if (ts_node_null_or_error(node)){
         yap_push_parse_error(src, node, "Invalid literal");
@@ -920,8 +993,7 @@ yap_literal_node yap_parse_literal(yap_source* src, TSNode node){
         return yap_parse_byte_literal(src, node);
     }
     strus_case(typ, "func_literal"){
-        yap_push_parse_error(src, node, "Function literals are not supported yet");
-        return (yap_literal_node){ .kind=yap_literal_error, .err=yap_node_error(src, node, "Function literals are not supported yet"), .loc=yap_ts_node_loc(node, src) };
+        return yap_parse_func_literal(src, node);
     }
 
     yap_push_parse_error(src, node, "Unhandled literal type");
