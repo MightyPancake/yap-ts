@@ -3,6 +3,9 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <ctype.h>
+#include <errno.h>
+#include <stdlib.h>
 
 yap_decl_node yap_parse_forward_type_decl(yap_source* src, TSNode node);
 yap_statement_node yap_parse_statement(yap_source* src, TSNode node);
@@ -1000,6 +1003,98 @@ yap_literal_node yap_parse_literal(yap_source* src, TSNode node){
     return (yap_literal_node){ .kind=yap_literal_error, .err=yap_node_error(src, node, "Unhandled literal type"), .loc=yap_ts_node_loc(node, src) };
 }
 
+static int yap_hex_digit_val(char c){
+    if (c >= '0' && c <= '9') return c - '0';
+    return tolower((unsigned char)c) - 'a' + 10;
+}
+
+static size_t yap_utf8_encode(uint32_t cp, char* out){
+    if (cp <= 0x7F){
+        out[0] = (char)cp;
+        return 1;
+    } else if (cp <= 0x7FF){
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    } else if (cp <= 0xFFFF){
+        out[0] = (char)(0xE0 | (cp >> 12));
+        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    } else {
+        out[0] = (char)(0xF0 | (cp >> 18));
+        out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[3] = (char)(0x80 | (cp & 0x3F));
+        return 4;
+    }
+}
+
+// Decodes backslash escapes in place, mirroring every form the grammar's
+// esc_seq token accepts (grammar.js). Decoded output is never longer than
+// the source text, so this can shrink the buffer in place instead of
+// allocating. This is the single point where string/cstring literal escapes
+// become real byte values -- codegen re-escapes them for valid C syntax
+// (yap_escape_c_string_bytes in yap-c/codegen.c) and every comptime macro
+// that walks a string literal's bytes (e.g. io->print's format-string
+// walker) now sees the real content instead of raw '\' + char pairs.
+static void yap_decode_string_escapes(char* text){
+    size_t len = strlen(text);
+    size_t r = 0, w = 0;
+    while (r < len){
+        if (text[r] != '\\'){
+            text[w++] = text[r++];
+            continue;
+        }
+        r++; // consume backslash
+        if (r >= len){ text[w++] = '\\'; break; }
+        char c = text[r];
+        if (c >= '0' && c <= '9'){
+            // 1-3 octal digits (a lone digit is covered by the grammar's
+            // catch-all [^xuU] branch, 2-3 digits by its \d{2,3} branch --
+            // both are decoded the same way here).
+            size_t start = r;
+            unsigned v = 0;
+            while (r < len && r - start < 3 && text[r] >= '0' && text[r] <= '9'){
+                v = v * 8 + (unsigned)(text[r] - '0');
+                r++;
+            }
+            text[w++] = (char)(v & 0xFF);
+        } else if (c == 'x'){
+            r++;
+            size_t start = r;
+            unsigned v = 0;
+            while (r < len && r - start < 4 && isxdigit((unsigned char)text[r])){
+                v = v * 16 + (unsigned)yap_hex_digit_val(text[r]);
+                r++;
+            }
+            text[w++] = (char)(v & 0xFF);
+        } else if (c == 'u' || c == 'U'){
+            size_t n = c == 'U' ? 8 : 4;
+            r++;
+            uint32_t v = 0;
+            for (size_t k = 0; k < n && r < len && isxdigit((unsigned char)text[r]); k++, r++)
+                v = v * 16 + (uint32_t)yap_hex_digit_val(text[r]);
+            char buf[4];
+            size_t n_bytes = yap_utf8_encode(v, buf);
+            for (size_t k = 0; k < n_bytes; k++) text[w++] = buf[k];
+        } else {
+            switch (c){
+                case 'n': text[w++] = '\n'; break;
+                case 't': text[w++] = '\t'; break;
+                case 'r': text[w++] = '\r'; break;
+                case 'a': text[w++] = '\a'; break;
+                case 'b': text[w++] = '\b'; break;
+                case 'f': text[w++] = '\f'; break;
+                case 'v': text[w++] = '\v'; break;
+                default:  text[w++] = c; break; // \\ \' \" \? and unknown escapes pass the char through
+            }
+            r++;
+        }
+    }
+    text[w] = '\0';
+}
+
 yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node){
     if (ts_node_null_or_error(node)){
         yap_push_parse_error(src, node, "Invalid string literal");
@@ -1035,6 +1130,7 @@ yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node){
     str_lit.prefix[offset] = '\0';
     str_lit.value = text + offset; //skip prefix
     str_lit.value[strlen(str_lit.value)-1] = '\0'; //remove closing quote
+    yap_decode_string_escapes(str_lit.value);
     yap_log("Parsed string literal: prefix='%s' value='%s'", str_lit.prefix, str_lit.value);
     return (yap_literal_node){
         .kind = is_cstring ? yap_literal_cstring : yap_literal_string,
@@ -1088,6 +1184,47 @@ yap_literal_node yap_parse_blob_literal(yap_source* src, TSNode node){
     return (yap_literal_node){ .kind=yap_literal_blob, .blob_elements=elements, .loc=yap_ts_node_loc(node, src) };
 }
 
+// Hex/octal/binary integers are decoded to canonical decimal text here (so
+// codegen never has to emit yap's '0o' syntax, which isn't valid C at all,
+// or rely on '0b' being enabled as a compiler extension -- see project
+// memory). This also validates every integer literal fits in 64 bits and
+// every float literal is representable as a double -- context-free checks
+// that hold regardless of where the literal is eventually used, done once
+// here rather than at each use site.
+static char* yap_normalize_num_literal(yap_source* src, TSNode node, char* text){
+    yap_ctx* ctx = src->ctx;
+    int base = 10;
+    char* digits = text;
+    if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) { base = 16; digits = text + 2; }
+    else if (text[0] == '0' && (text[1] == 'o' || text[1] == 'O')) { base = 8; digits = text + 2; }
+    else if (text[0] == '0' && (text[1] == 'b' || text[1] == 'B')) { base = 2; digits = text + 2; }
+
+    if (base != 10){
+        errno = 0;
+        char* endptr = NULL;
+        unsigned long long v = strtoull(digits, &endptr, base);
+        if (errno == ERANGE || *endptr != '\0'){
+            yap_push_parse_error(src, node, "Numeric literal '%s' does not fit in 64 bits", text);
+            return text;
+        }
+        return yap_ctx_strus_newf(ctx, "%llu", v);
+    }
+
+    bool is_float = strchr(text, '.') != NULL || strchr(text, 'e') != NULL || strchr(text, 'E') != NULL;
+    errno = 0;
+    char* endptr = NULL;
+    if (is_float)
+        strtod(text, &endptr);
+    else
+        strtoull(text, &endptr, 10);
+    if (errno == ERANGE || *endptr != '\0'){
+        yap_push_parse_error(src, node, is_float
+            ? "Numeric literal '%s' is not representable as a 64-bit float"
+            : "Numeric literal '%s' does not fit in 64 bits", text);
+    }
+    return text;
+}
+
 yap_literal_node yap_parse_num_literal(yap_source* src, TSNode node){
     if (ts_node_null_or_error(node)){
         yap_push_parse_error(src, node, "Invalid numeric literal");
@@ -1098,6 +1235,7 @@ yap_literal_node yap_parse_num_literal(yap_source* src, TSNode node){
         };
     }
     char* text = yap_node_get_val_ctx(src, node);
+    text = yap_normalize_num_literal(src, node, text);
     return (yap_literal_node){ .kind=yap_literal_numerical, .numerical=text, .loc=yap_ts_node_loc(node, src) };
 }
 
@@ -1298,6 +1436,23 @@ yap_expr_node yap_parse_expr_paren(yap_source* src, TSNode node){
     return (yap_expr_node){
         .kind=yap_expr_paren,
         .paren={
+            .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
+yap_expr_node yap_parse_expr_unary(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, expr);
+    if (ts_node_null_or_error(expr_node)){
+        yap_push_parse_error(src, node, "Missing operand in unary expression");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing operand in unary expression"), .loc=yap_ts_node_loc(node, src) };
+    }
+    return (yap_expr_node){
+        .kind=yap_expr_unary,
+        .unary={
             .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
             .loc=yap_ts_node_loc(node, src)
         },
@@ -1547,6 +1702,8 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_expr_identifier(src, node);
     }strus_case(typ, "bin_expr"){
         return yap_parse_expr_bin(src, node);
+    }strus_case(typ, "unary_expr"){
+        return yap_parse_expr_unary(src, node);
     }strus_case(typ, "assignment"){
         return yap_parse_expr_assignment(src, node);
     }strus_case(typ, "func_call"){

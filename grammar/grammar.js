@@ -49,7 +49,8 @@ const PREC = {
   '/': 4,               // /
   '*': 4,               // *
   '%': 4,               // %
-  INCR: 5,              // expr++, expr-- etc.
+  UNARY: 5,             // -expr (unary minus)
+  INCR: 6,              // expr++, expr-- etc.
   PAREN: 13,            // ()
   CALL: 15,             // func()
   IF: 16,               // if
@@ -449,6 +450,11 @@ module.exports = grammar({
         ));
       }));
     },
+    //def unary_expr
+    unary_expr: $ => prec.right(PREC.UNARY, seq(
+      field("op", '-'),
+      field("expr", $._expr),
+    )),
     //_assignment
     assignment: $ => prec.right(PREC.ASSIGN,
       seq(
@@ -502,6 +508,7 @@ module.exports = grammar({
     _expr: $ => choice(
       $.literal, //TODO: Check for errors, finish literals
       $.bin_expr, //TODO: Finish/checks
+      $.unary_expr,
       $.identifier,
       $.assignment, //TODO: Finish/checks
       $.at_op, //TODO: Checks
@@ -639,7 +646,14 @@ module.exports = grammar({
       ']'
     ),
     //def num_literal
-    num_literal: $ => /\d+(\.\d+)?/,
+    num_literal: $ => choice(
+      /0[xX][0-9a-fA-F]+/,          // hex int
+      /0[oO][0-7]+/,                // octal int
+      /0[bB][01]+/,                 // binary int
+      /\d+\.\d+([eE][+-]?\d+)?/,    // decimal float, optional exponent
+      /\d+[eE][+-]?\d+/,            // decimal int mantissa + exponent (still a float)
+      /\d+/,                        // plain decimal int
+    ),
     //def bool_literal
     bool_literal: $ => choice("true", "false"),
     //def null_literal
