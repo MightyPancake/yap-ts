@@ -589,11 +589,11 @@ module.exports = grammar({
       field("field", $.identifier)
     ),
     //def method
-    method_access: $ => seq(
+    method_access: $ => prec.left(PREC.FIELD, seq(
       field("caller", $._expr),
       field("method_access_op", ":"),
       field("name", $.identifier)
-    ),
+    )),
     //def literal
     literal: $ => choice(
       $.num_literal,

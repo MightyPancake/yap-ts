@@ -349,7 +349,7 @@ yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
 
         char* mod_tag = yap_ctx_strus_cpy(ctx, module_name.value);
         for (size_t si = sources_before; si < darr_len(ctx->sources); si++){
-            if (ctx->sources[si])
+            if (ctx->sources[si] && !ctx->sources[si]->from_module_import)
                 ctx->sources[si]->from_module_import = mod_tag;
         }
     } else {
