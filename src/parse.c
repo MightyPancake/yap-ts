@@ -399,7 +399,6 @@ yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node){
     yap_decl_node res = {.kind=yap_decl_error};
     if (ts_node_null_or_error(node)){
         yap_push_parse_error(src, node, "Invalid file import declaration");
-        res.err = yap_node_error(src, node, "Invalid file import declaration");
         return res;
     }
     yap_log_node(src, node, "Parsing file import declaration");
@@ -407,7 +406,6 @@ yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node){
     yap_node_field_by_name_var(node, path);
     if (ts_node_null_or_error(path_node)){
         yap_push_parse_error(src, node, "Missing file path in file import declaration");
-        res.err = yap_node_error(src, node, "Missing file path in file import declaration");
         return res;
     }
     yap_literal_node path_lit = yap_parse_string_literal(src, path_node);
@@ -420,12 +418,17 @@ yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node){
     char* identity = yap_ctx_strus_cpy(ctx, resolved_path);
     yap_log("Resolved path: '%s'", resolved_path ? resolved_path : "(null)");
     free(parent_path);
-    free(resolved_path);
+
+    if (!resolved_path || access(resolved_path, R_OK) != 0){
+        yap_push_parse_error(src, node, "Imported file '%s' not found", display_path);
+        free(resolved_path);
+        return res;
+    }
+
     yap_log("\t Importing and parsing file '%s'", display_path);
     yap_parse_file(ctx, display_path, identity, yap_ts_node_loc(node, src));
     yap_log("\t Finished importing and parsing file '%s', back to %s", display_path, src->label);
-    // free(parent_path);
-    // free(resolved_path);
+    free(resolved_path);
     //end of import+parsing
     return (yap_decl_node){
         .kind=yap_decl_file_import,
