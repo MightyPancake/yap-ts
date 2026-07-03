@@ -643,7 +643,7 @@ module.exports = grammar({
     //def blob_literal
     blob_literal: $ => seq(
       '[',
-      comma_sep($._param), //TODO: Rework
+      optional(comma_sep($._param)), //TODO: Rework
       ']'
     ),
     //def num_literal
