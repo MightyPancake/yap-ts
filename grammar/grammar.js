@@ -525,7 +525,8 @@ module.exports = grammar({
       $.method_access, //method dispatch (parse.c, build.c) when called as 'obj:name(args)'; bare 'Type:name;' statements are still reinterpreted as an uninitialized var-decl shorthand
       $.module_access,
       $.comp_op,
-      $.ast_blueprint, //NOT IMPLEMENTED: parses but no semantic/codegen handling — see blueprint_literal
+      $.expr_blueprint, //expression blueprint: $( expr-with-$holes ) -> yBlueprint
+      $.blueprint_hole, //$name placeholder; only meaningful inside a blueprint, rejected elsewhere in build.c
       $.macro_expr,
     ),
     //def macro_expr
@@ -723,10 +724,15 @@ module.exports = grammar({
       $.module_access,
       $.method_access,
     ),
-    //def expr_blueprint — NOT IMPLEMENTED: grammar only, no parser/semantic handling anywhere
+    //def blueprint_hole — $name placeholder inside a blueprint. Atomic token so it
+    //never collides with the "$(" opener ('(' is not an identifier char, so the
+    //hole token can't match "$("). The leading '$' is stripped in parse.c.
+    blueprint_hole: $ => token(seq('$', /[a-zA-Z_]\w*/)),
+    //def expr_blueprint — quasi-quote: $( <expr, may contain $holes> ) -> yBlueprint.
+    //Desugars (build.c) to yapi-> builder calls; holes become yapi->hole(name).
     expr_blueprint: $ => seq(
       field("expr_start", "$("),
-      optional(field("expr_content", $.non_empty_source)),
+      field("expr", $._expr),
       field("expr_end", ')'),
     ),
     //def statement_blueprint — NOT IMPLEMENTED: grammar only, no parser/semantic handling anywhere

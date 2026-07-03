@@ -1431,6 +1431,39 @@ yap_expr_node yap_parse_expr_paren(yap_source* src, TSNode node){
     };
 }
 
+// $( template ) -> blueprint node wrapping the parsed template expression.
+yap_expr_node yap_parse_expr_blueprint(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, expr);
+    if (ts_node_null_or_error(expr_node)){
+        yap_push_parse_error(src, node, "Missing expression in blueprint");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing expression in blueprint"), .loc=yap_ts_node_loc(node, src) };
+    }
+    return (yap_expr_node){
+        .kind=yap_expr_blueprint,
+        .blueprint={
+            .template=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
+// $name placeholder token. The token text includes the leading '$'; strip it
+// so the hole carries just the bare name.
+yap_expr_node yap_parse_expr_blueprint_hole(yap_source* src, TSNode node){
+    char* text = yap_node_get_val_ctx(src, node);
+    char* name = (text && text[0] == '$') ? text + 1 : text;
+    return (yap_expr_node){
+        .kind=yap_expr_blueprint_hole,
+        .blueprint_hole={
+            .name={ .value=name, .loc=yap_ts_node_loc(node, src) },
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
 yap_expr_node yap_parse_expr_unary(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, expr);
@@ -1700,6 +1733,10 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_expr_cast(src, node);
     }strus_case(typ, "at_op"){
         return yap_parse_expr_at_op(src, node);
+    }strus_case(typ, "expr_blueprint"){
+        return yap_parse_expr_blueprint(src, node);
+    }strus_case(typ, "blueprint_hole"){
+        return yap_parse_expr_blueprint_hole(src, node);
     }strus_case(typ, "paren_expr"){
         return yap_parse_expr_paren(src, node);
     }strus_case(typ, "incr_expr"){
