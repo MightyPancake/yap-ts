@@ -1,6 +1,6 @@
 CC := gcc
 # CC := clang
-CFLAGS := -Wall -O1
+CFLAGS := -Wall
 CYAN := [96m
 PURPLE := [94m
 GREEN := [92m
@@ -14,8 +14,9 @@ YAP_PATH := $(shell pwd)
 
 debug ?= false
 ifeq ($(debug),true)
-	# -O?
-    CFLAGS += -g -fno-omit-frame-pointer
+    CFLAGS += -g -O1 -fno-omit-frame-pointer
+else
+    CFLAGS += -O2
 endif
 
 log := $(debug)

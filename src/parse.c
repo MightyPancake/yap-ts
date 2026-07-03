@@ -1033,14 +1033,7 @@ static size_t yap_utf8_encode(uint32_t cp, char* out){
     }
 }
 
-// Decodes backslash escapes in place, mirroring every form the grammar's
-// esc_seq token accepts (grammar.js). Decoded output is never longer than
-// the source text, so this can shrink the buffer in place instead of
-// allocating. This is the single point where string/cstring literal escapes
-// become real byte values -- codegen re-escapes them for valid C syntax
-// (yap_escape_c_string_bytes in yap-c/codegen.c) and every comptime macro
-// that walks a string literal's bytes (e.g. io->print's format-string
-// walker) now sees the real content instead of raw '\' + char pairs.
+// Decodes backslash escapes in place (output is never longer than input, so no realloc needed)
 static void yap_decode_string_escapes(char* text){
     size_t len = strlen(text);
     size_t r = 0, w = 0;
@@ -1053,9 +1046,7 @@ static void yap_decode_string_escapes(char* text){
         if (r >= len){ text[w++] = '\\'; break; }
         char c = text[r];
         if (c >= '0' && c <= '9'){
-            // 1-3 octal digits (a lone digit is covered by the grammar's
-            // catch-all [^xuU] branch, 2-3 digits by its \d{2,3} branch --
-            // both are decoded the same way here).
+            // 1-3 octal digits
             size_t start = r;
             unsigned v = 0;
             while (r < len && r - start < 3 && text[r] >= '0' && text[r] <= '9'){
@@ -1187,13 +1178,7 @@ yap_literal_node yap_parse_blob_literal(yap_source* src, TSNode node){
     return (yap_literal_node){ .kind=yap_literal_blob, .blob_elements=elements, .loc=yap_ts_node_loc(node, src) };
 }
 
-// Hex/octal/binary integers are decoded to canonical decimal text here (so
-// codegen never has to emit yap's '0o' syntax, which isn't valid C at all,
-// or rely on '0b' being enabled as a compiler extension -- see project
-// memory). This also validates every integer literal fits in 64 bits and
-// every float literal is representable as a double -- context-free checks
-// that hold regardless of where the literal is eventually used, done once
-// here rather than at each use site.
+// Decodes hex/octal/binary to canonical decimal text (yap's '0o'/'0b' aren't valid C) and range-checks the value
 static char* yap_normalize_num_literal(yap_source* src, TSNode node, char* text){
     yap_ctx* ctx = src->ctx;
     int base = 10;
