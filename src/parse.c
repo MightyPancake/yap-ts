@@ -782,6 +782,12 @@ yap_type_node yap_parse_type_node(yap_source* src, TSNode type_node){
     if (strus_eq(tt, "identifier")){
         return (yap_type_node){ .kind = yap_type_node_identifier, .identifier = yap_parse_identifier(src, type_node), .loc = loc };
     }
+    if (strus_eq(tt, "blueprint_hole")){
+        // $name in type position: eager splice (in type${ }/fn$) or a lazy type-hole.
+        char* text = yap_node_get_val_ctx(src, type_node);
+        char* name = (text && text[0] == '$') ? text + 1 : text;
+        return (yap_type_node){ .kind = yap_type_node_blueprint_hole, .identifier = { .value = name, .loc = loc }, .loc = loc };
+    }
     if (strus_eq(tt, "pointer_type")){
         yap_node_field_by_name_var(type_node, subtyp);
         yap_type_node* subtype = yap_ctx_one(ctx, yap_type_node);
@@ -1449,6 +1455,23 @@ yap_expr_node yap_parse_expr_blueprint(yap_source* src, TSNode node){
     };
 }
 
+// type${ <anon struct/enum/union> } -> type_blueprint node wrapping the parsed body type.
+yap_expr_node yap_parse_type_blueprint(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, body);
+    if (ts_node_null_or_error(body_node)){
+        yap_push_parse_error(src, node, "Missing body in type blueprint");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing body in type blueprint"), .loc=yap_ts_node_loc(node, src) };
+    }
+    yap_type_node* body = yap_ctx_one(ctx, yap_type_node);
+    *body = yap_parse_type_node(src, body_node);
+    return (yap_expr_node){
+        .kind=yap_expr_type_blueprint,
+        .type_blueprint={ .body=body, .loc=yap_ts_node_loc(node, src) },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
 // $name placeholder token. The token text includes the leading '$'; strip it
 // so the hole carries just the bare name.
 yap_expr_node yap_parse_expr_blueprint_hole(yap_source* src, TSNode node){
@@ -1735,6 +1758,8 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_expr_at_op(src, node);
     }strus_case(typ, "expr_blueprint"){
         return yap_parse_expr_blueprint(src, node);
+    }strus_case(typ, "type_blueprint"){
+        return yap_parse_type_blueprint(src, node);
     }strus_case(typ, "blueprint_hole"){
         return yap_parse_expr_blueprint_hole(src, node);
     }strus_case(typ, "paren_expr"){

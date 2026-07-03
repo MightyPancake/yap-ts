@@ -270,6 +270,7 @@ module.exports = grammar({
       $.const_type,
       $.slice_type,
       $.array_type,
+      $.blueprint_hole, //$T in type position: an eager splice inside type${ }/(…fn$…) or a type-hole in a lazy blueprint
     ),
     array_type: $ => seq(
       field("inner", $.typ),
@@ -525,7 +526,8 @@ module.exports = grammar({
       $.method_access, //method dispatch (parse.c, build.c) when called as 'obj:name(args)'; bare 'Type:name;' statements are still reinterpreted as an uninitialized var-decl shorthand
       $.module_access,
       $.comp_op,
-      $.expr_blueprint, //expression blueprint: $( expr-with-$holes ) -> yBlueprint
+      $.expr_blueprint, //expression blueprint: expr${ expr-with-$holes } -> yExprBlueprint
+      $.type_blueprint, //type blueprint: type${ struct{...} } -> yStructT/yEnumT/yUnionT (eager)
       $.blueprint_hole, //$name placeholder; only meaningful inside a blueprint, rejected elsewhere in build.c
       $.macro_expr,
     ),
@@ -725,40 +727,24 @@ module.exports = grammar({
       $.method_access,
     ),
     //def blueprint_hole — $name placeholder inside a blueprint. Atomic token so it
-    //never collides with the "$(" opener ('(' is not an identifier char, so the
-    //hole token can't match "$("). The leading '$' is stripped in parse.c.
+    //never collides with a keyword opener like "expr${" ('{'/'(' aren't identifier
+    //chars, so the hole token can't swallow an opener). Leading '$' stripped in parse.c.
     blueprint_hole: $ => token(seq('$', /[a-zA-Z_]\w*/)),
-    //def expr_blueprint — quasi-quote: $( <expr, may contain $holes> ) -> yBlueprint.
-    //Desugars (build.c) to yapi-> builder calls; holes become yapi->hole(name).
+    //def expr_blueprint — quasi-quote: expr${ <expr, may contain $holes> } -> yExprBlueprint.
+    //Opener is the atomic token "expr${" (contiguous), so `expr` stays usable as an
+    //identifier elsewhere. Desugars (build.c) to yapi-> builder calls; holes -> yapi->hole(name).
     expr_blueprint: $ => seq(
-      field("expr_start", "$("),
+      field("expr_start", "expr${"),
       field("expr", $._expr),
-      field("expr_end", ')'),
+      field("expr_end", '}'),
     ),
-    //def statement_blueprint — NOT IMPLEMENTED: grammar only, no parser/semantic handling anywhere
-    statement_blueprint: $ => seq(
-      field("statement_start", "${"),
-      optional(field("statement_content", $.non_empty_source)),
-      field("statement_end", '}'),
-    ),
-    //def declaration_blueprint — NOT IMPLEMENTED, unreachable (not wired into blueprint_literal)
-    declaration_blueprint: $ => seq(
-      field("declaration_start", "$["),
-      optional(field("declaration_content", $.non_empty_source)),
-      field("declaration_end", ']'),
-    ),
-    //def ast_blueprint — NOT IMPLEMENTED: reachable from _expr but no parser/semantic handling
-    ast_blueprint: $ => seq(
-      field("ast_start", "$<"),
-      optional(field("ast_content", $.non_empty_source)),
-      field("ast_end", '>'),
-    ),
-    //blueprint_literal — unused: not referenced by `literal` or any other rule
-    blueprint_literal: $ => choice(
-      $.expr_blueprint,
-      $.statement_blueprint,
-      //$.declaration_blueprint,
-      //$.ast_blueprint,
+    //def type_blueprint — eager quasi-quote of an anonymous type: type${ struct {...} }
+    //-> yStructT/yEnumT/yUnionT (Model A: a template you :finish("name") yourself). $T in a
+    //field type position eagerly splices the in-scope comptime yType. Opener is atomic "type${".
+    type_blueprint: $ => seq(
+      field("type_start", "type${"),
+      field("body", choice($.anon_struct_type, $.anon_enum_type, $.anon_union_type)),
+      field("type_end", '}'),
     ),
   }
 });
@@ -767,4 +753,4 @@ module.exports = grammar({
 // C ABI (bindgen.c/libclang header import exists as a standalone tool — not wired into the main compile pipeline)
 // struct unpacking
 // ?? (null coalescing) — ?.field (optional chaining) is implemented
-// blueprints ($(), ${}, $<>)
+// blueprints: expr${ } done; stmt${ }, type${ }, (… fn$ …){…} in progress
