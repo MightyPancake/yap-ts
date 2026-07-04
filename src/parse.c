@@ -874,6 +874,12 @@ yap_identifier_node yap_parse_identifier(yap_source* src, TSNode node){
     if (strus_eq(_id_typ, "identifier")){
         return (yap_identifier_node){ .value=yap_node_get_val_ctx(src, node), .loc=yap_ts_node_loc(node, src) };
     }
+    if (strus_eq(_id_typ, "blueprint_hole")){
+        // $name in identifier position (currently: a var_decl's name inside stmt${ }).
+        char* text = yap_node_get_val_ctx(src, node);
+        char* name = (text && text[0] == '$') ? text + 1 : text;
+        return (yap_identifier_node){ .value=name, .is_hole=true, .loc=yap_ts_node_loc(node, src) };
+    }
 
     /* If we got a wrapper node (typ, pointer_type, function_type, etc.),
        try to descend to the first named child that is an identifier. If

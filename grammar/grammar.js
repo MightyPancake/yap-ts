@@ -350,13 +350,13 @@ module.exports = grammar({
     )),
     infered_type_var_decl: $ => seq(
       field("no_type", "_"),
-      field("name", $.identifier),
+      field("name", choice($.identifier, $.blueprint_hole)), //$name in var_decl name position: a hole inside stmt${ }, rejected elsewhere in build.c
       field("assign", "="),
       field("value", $._expr)
     ),
     explicit_type_var_decl: $ => seq(
       field("type", $.typ),
-      field("name", $.identifier),
+      field("name", choice($.identifier, $.blueprint_hole)), //$name in var_decl name position: a hole inside stmt${ }, rejected elsewhere in build.c
       optional(
         seq(
            field("assign", "="),
