@@ -1472,6 +1472,54 @@ yap_expr_node yap_parse_type_blueprint(yap_source* src, TSNode node){
     };
 }
 
+// (RET fn$ params){body} -> fn_blueprint node. Same shape as a func literal
+// (return type, params, block body); build.c desugars it to a yFnT builder chain.
+yap_expr_node yap_parse_fn_blueprint(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, return_type);
+    yap_node_field_by_name_var(node, func_literal_params);
+    yap_node_field_by_name_var(node, body);
+    if (ts_node_null_or_error(body_node)){
+        yap_push_parse_error(src, node, "Missing body in function blueprint");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing body in function blueprint"), .loc=yap_ts_node_loc(node, src) };
+    }
+    bool has_return_type = !ts_node_null_or_error(return_type_node);
+    yap_type_node* return_type = NULL;
+    if (has_return_type){
+        yap_type_node rt = yap_parse_type_node(src, return_type_node);
+        return_type = yap_ctx_one_cpy(ctx, rt);
+    }
+    darr(yap_func_arg_node) args = yap_parse_func_literal_params(src, func_literal_params_node);
+    yap_block_node body = yap_parse_block(src, body_node);
+    return (yap_expr_node){
+        .kind=yap_expr_fn_blueprint,
+        .fn_blueprint=(yap_func_literal_node){
+            .args=args,
+            .has_return_type=has_return_type,
+            .return_type_node=return_type,
+            .body=body,
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
+// stmt${ ...statements... } -> stmt_blueprint node. Named children are the
+// statements (opener/closer are anonymous tokens), parsed like a block body.
+yap_expr_node yap_parse_stmt_blueprint(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    uint32_t cnt = ts_node_named_child_count(node);
+    darr(yap_statement_node) body = yap_ctx_darr_new(ctx, yap_statement_node, .cap=cnt, .len=0);
+    for_ts_named_children(node, n){
+        darr_push(body, yap_parse_statement(src, n));
+    }
+    return (yap_expr_node){
+        .kind=yap_expr_stmt_blueprint,
+        .stmt_blueprint={ .body=body, .loc=yap_ts_node_loc(node, src) },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
 // $name placeholder token. The token text includes the leading '$'; strip it
 // so the hole carries just the bare name.
 yap_expr_node yap_parse_expr_blueprint_hole(yap_source* src, TSNode node){
@@ -1760,6 +1808,10 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_expr_blueprint(src, node);
     }strus_case(typ, "type_blueprint"){
         return yap_parse_type_blueprint(src, node);
+    }strus_case(typ, "stmt_blueprint"){
+        return yap_parse_stmt_blueprint(src, node);
+    }strus_case(typ, "fn_blueprint"){
+        return yap_parse_fn_blueprint(src, node);
     }strus_case(typ, "blueprint_hole"){
         return yap_parse_expr_blueprint_hole(src, node);
     }strus_case(typ, "paren_expr"){

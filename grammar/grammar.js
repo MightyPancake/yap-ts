@@ -528,6 +528,8 @@ module.exports = grammar({
       $.comp_op,
       $.expr_blueprint, //expression blueprint: expr${ expr-with-$holes } -> yExprBlueprint
       $.type_blueprint, //type blueprint: type${ struct{...} } -> yStructT/yEnumT/yUnionT (eager)
+      $.stmt_blueprint, //statement blueprint: stmt${ ...stmts... } -> yStmtBlueprint (lazy)
+      $.fn_blueprint, //function blueprint: (RET fn$ params){body} -> yFnT (eager)
       $.blueprint_hole, //$name placeholder; only meaningful inside a blueprint, rejected elsewhere in build.c
       $.macro_expr,
     ),
@@ -745,6 +747,25 @@ module.exports = grammar({
       field("type_start", "type${"),
       field("body", choice($.anon_struct_type, $.anon_enum_type, $.anon_union_type)),
       field("type_end", '}'),
+    ),
+    //def stmt_blueprint — lazy quasi-quote of a statement sequence: stmt${ ...stmts... }
+    //-> yStmtBlueprint. $holes desugar to yapi->hole; fill via :fill_expr(...):finish().
+    //Opener is atomic "stmt${". Named children are the statements (like a block body).
+    stmt_blueprint: $ => seq(
+      field("stmt_start", "stmt${"),
+      repeat($._statement),
+      field("stmt_end", '}'),
+    ),
+    //def fn_blueprint — eager function blueprint: reuses the anon func-literal shape with
+    //'fn' -> 'fn$'. (RET fn$ params){body} -> yFnT (Model A: you :finish("name") it). $T in
+    //a param/return type eagerly splices the in-scope comptime yType.
+    fn_blueprint: $ => seq(
+      field("open_paren", '('),
+      optional(field("return_type", $.typ)),
+      field("fn", "fn$"),
+      optional(field("func_literal_params", $.func_literal_params)),
+      field("close_paren", ')'),
+      field("body", $.block)
     ),
   }
 });
