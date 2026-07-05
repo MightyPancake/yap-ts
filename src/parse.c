@@ -1330,6 +1330,54 @@ yap_expr_node yap_parse_expr_comp(yap_source* src, TSNode node){
     };
 }
 
+yap_expr_node yap_parse_expr_logic(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, left);
+    yap_node_field_by_name_var(node, right);
+    yap_node_field_by_name_var(node, op);
+    if (ts_node_null_or_error(left_node) || ts_node_null_or_error(right_node) || ts_node_null_or_error(op_node)){
+        yap_push_parse_error(src, node, "Missing operand or operator in logical expression");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing operand or operator in logical expression"), .loc=yap_ts_node_loc(node, src) };
+    }
+    char* op_text = yap_node_get_val_ctx(src, op_node);
+    // Sentinel chars ('a'/'o'), distinct from bin_expr/comp_op's codes -- see yap_bin_expr in semtree.h.
+    char op_char = (op_text[0] == '&') ? 'a' : 'o'; // && -> and, || -> or
+    return (yap_expr_node){
+        .kind=yap_expr_bin,
+        .bin={
+            .op=op_char,
+            .left=yap_ctx_one_cpy(ctx, yap_parse_expr(src, left_node)),
+            .right=yap_ctx_one_cpy(ctx, yap_parse_expr(src, right_node)),
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
+yap_expr_node yap_parse_expr_shift(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, left);
+    yap_node_field_by_name_var(node, right);
+    yap_node_field_by_name_var(node, op);
+    if (ts_node_null_or_error(left_node) || ts_node_null_or_error(right_node) || ts_node_null_or_error(op_node)){
+        yap_push_parse_error(src, node, "Missing operand or operator in shift expression");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing operand or operator in shift expression"), .loc=yap_ts_node_loc(node, src) };
+    }
+    char* op_text = yap_node_get_val_ctx(src, op_node);
+    // Sentinel chars ('L'/'R'), distinct from comp_op's '<'/'>' (less/greater-than).
+    char op_char = (op_text[0] == '<') ? 'L' : 'R'; // << -> shl, >> -> shr
+    return (yap_expr_node){
+        .kind=yap_expr_bin,
+        .bin={
+            .op=op_char,
+            .left=yap_ctx_one_cpy(ctx, yap_parse_expr(src, left_node)),
+            .right=yap_ctx_one_cpy(ctx, yap_parse_expr(src, right_node)),
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
 yap_expr_node yap_parse_expr_assignment(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, left);
@@ -1855,6 +1903,10 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_expr_method_access(src, node);
     }strus_case(typ, "comp_op"){
         return yap_parse_expr_comp(src, node);
+    }strus_case(typ, "logic_op"){
+        return yap_parse_expr_logic(src, node);
+    }strus_case(typ, "shift_op"){
+        return yap_parse_expr_shift(src, node);
     }strus_case(typ, "block_expr"){
         /* block_expr is ( block ) ; extract the block field */
         yap_node_field_var(block_node, node, "block");

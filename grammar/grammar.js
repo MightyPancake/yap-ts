@@ -38,25 +38,34 @@ const fielded = ($, ruleName) => {
 };
 
 const PREC = {
-  ASSIGN: 0,            // =, +=, -=, *=, /=, %=, ?= 
+  ASSIGN: 0,            // =, +=, -=, *=, /=, %=, ?=
   TERNARY: 1,           // cond ? val_if_true : val_if_false
   EXPR_STATEMENT: 1,    // expr being a statement
     // Precedence for variable declarations (one higher than EXPR_STATEMENT)
   VAR_DECL: 2,
-  COMPARISON: 2,    // expr == expr, etc.
-  '+': 3,               // +
-  '-': 3,               // -
-  '/': 4,               // /
-  '*': 4,               // *
-  '%': 4,               // %
-  UNARY: 5,             // -expr (unary minus)
-  INCR: 6,              // expr++, expr-- etc.
-  PAREN: 13,            // ()
-  CALL: 15,             // func()
-  IF: 16,               // if
-  IF_ELSE: 17,          // if-else
-  FIELD: 18,            // x.field
-  CAST: 18,             // x.(type)
+  // Below: mirrors C's precedence ladder (loosest to tightest) for the
+  // operators between var_decl and unary, so a flat "%s %s %s" codegen
+  // emission (no defensive parens - see yap_gen_binary_expr) stays correct.
+  OR: 3,                // ||
+  AND: 4,               // &&
+  '|': 5,               // bitwise OR
+  '^': 6,               // bitwise XOR
+  '&': 7,               // bitwise AND
+  COMPARISON: 8,    // expr == expr, etc.
+  SHIFT: 9,             // <<, >>
+  '+': 10,              // +
+  '-': 10,              // -
+  '/': 11,              // /
+  '*': 11,              // *
+  '%': 11,              // %
+  UNARY: 12,             // -expr (unary minus)
+  INCR: 13,              // expr++, expr-- etc.
+  PAREN: 20,            // ()
+  CALL: 22,             // func()
+  IF: 23,               // if
+  IF_ELSE: 24,          // if-else
+  FIELD: 25,            // x.field
+  CAST: 25,             // x.(type)
 };
 
 module.exports = grammar({
@@ -441,7 +450,7 @@ module.exports = grammar({
     ),
     //def bin_expr
     bin_expr: $ => {
-      const bin_ops = ['+', '-', '*', '/', '%'];
+      const bin_ops = ['+', '-', '*', '/', '%', '&', '|', '^'];
       return choice(...bin_ops.map((op) => {
         return prec.left(PREC[op], seq(
           field('left', $._expr),
@@ -497,6 +506,30 @@ module.exports = grammar({
       )),
       field("right", $._expr),
     )),
+    // def logic_op — && and || each get their own precedence level (matching
+    // C: || binds looser than &&), so they can't share one prec.right/left
+    // like comp_op does; structured like bin_expr's per-op choice instead.
+    logic_op: $ => choice(
+      prec.left(PREC.AND, seq(
+        field("left", $._expr),
+        field("op", "&&"),
+        field("right", $._expr),
+      )),
+      prec.left(PREC.OR, seq(
+        field("left", $._expr),
+        field("op", "||"),
+        field("right", $._expr),
+      )),
+    ),
+    //def shift_op
+    shift_op: $ => prec.left(PREC.SHIFT, seq(
+      field("left", $._expr),
+      field("op", choice(
+        "<<",
+        ">>",
+      )),
+      field("right", $._expr),
+    )),
     //def expr_statement
     expr_statement: $ => prec.right(PREC.EXPR_STATEMENT, seq(
       field("expr", $._expr),
@@ -526,6 +559,8 @@ module.exports = grammar({
       $.method_access, //method dispatch (parse.c, build.c) when called as 'obj:name(args)'; bare 'Type:name;' statements are still reinterpreted as an uninitialized var-decl shorthand
       $.module_access,
       $.comp_op,
+      $.logic_op,
+      $.shift_op,
       $.expr_blueprint, //expression blueprint: expr${ expr-with-$holes } -> yExprBlueprint
       $.type_blueprint, //type blueprint: type${ struct{...} } -> yStructT/yEnumT/yUnionT (eager)
       $.stmt_blueprint, //statement blueprint: stmt${ ...stmts... } -> yStmtBlueprint (lazy)
