@@ -41,30 +41,22 @@ const PREC = {
   ASSIGN: 0,            // =, +=, -=, *=, /=, %=, ?=
   TERNARY: 1,           // cond ? val_if_true : val_if_false
   EXPR_STATEMENT: 1,    // expr being a statement
-    // Precedence for variable declarations (one higher than EXPR_STATEMENT)
-  VAR_DECL: 2,
-  // '??' desugars (build.c) to a self-parenthesizing ternary before codegen
-  // ever sees it, so unlike the tier below it doesn't need to mirror C's
-  // precedence for codegen correctness - this placement (looser than the
-  // rest, tighter than var_decl) is purely a yap-source readability choice.
+  VAR_DECL: 2,          // typ name = expr
   COALESCE: 3,          // ??
-  // Below: mirrors C's precedence ladder (loosest to tightest) for the
-  // operators between var_decl and unary, so a flat "%s %s %s" codegen
-  // emission (no defensive parens - see yap_gen_binary_expr) stays correct.
   OR: 4,                // ||
   AND: 5,               // &&
   '|': 6,               // bitwise OR
   '^': 7,               // bitwise XOR
   '&': 8,               // bitwise AND
-  COMPARISON: 9,    // expr == expr, etc.
-  SHIFT: 10,             // <<, >>
+  COMPARISON: 9,        // expr == expr, etc.
+  SHIFT: 10,            // <<, >>
   '+': 11,              // +
   '-': 11,              // -
   '/': 12,              // /
   '*': 12,              // *
   '%': 12,              // %
-  UNARY: 13,             // -expr (unary minus)
-  INCR: 14,              // expr++, expr-- etc.
+  UNARY: 13,            // -expr (unary minus)
+  INCR: 14,             // expr++, expr-- etc.
   PAREN: 20,            // ()
   CALL: 22,             // func()
   IF: 23,               // if
@@ -284,7 +276,7 @@ module.exports = grammar({
       $.const_type,
       $.slice_type,
       $.array_type,
-      $.blueprint_hole, //$T in type position: an eager splice inside type${ }/(…fn$…) or a type-hole in a lazy blueprint
+      $.blueprint_hole,
     ),
     array_type: $ => seq(
       field("inner", $.typ),
@@ -379,12 +371,6 @@ module.exports = grammar({
       )
     ),
     //def for_loop
-    //The condition is parenthesized (like C) so there's a hard boundary
-    //between it and the body - without one, a brace-less body leaves the
-    //GLR parser to guess where the condition ends (see e.g. the deref_expr
-    //vs member_access ambiguity this resolves: "for (...; p.field; ...) body"
-    //has no ambiguity, whereas a bare "for (...; p.field; ...) body" without
-    //parens would).
     for_loop: $ => seq(
       field("for", "for"),
       field("open_paren", '('),
@@ -511,9 +497,7 @@ module.exports = grammar({
       )),
       field("right", $._expr),
     )),
-    // def logic_op — && and || each get their own precedence level (matching
-    // C: || binds looser than &&), so they can't share one prec.right/left
-    // like comp_op does; structured like bin_expr's per-op choice instead.
+    // def logic_op
     logic_op: $ => choice(
       prec.left(PREC.AND, seq(
         field("left", $._expr),
@@ -567,6 +551,7 @@ module.exports = grammar({
       $.deref_expr,
       $.index_access,
       $.incr_expr,
+      $.prefix_incr_expr,
       $.method_access, //method dispatch (parse.c, build.c) when called as 'obj:name(args)'; bare 'Type:name;' statements are still reinterpreted as an uninitialized var-decl shorthand
       $.module_access,
       $.comp_op,
@@ -641,6 +626,14 @@ module.exports = grammar({
         "--"
       ))
     ),
+    //def prefix_incr_expr
+    prefix_incr_expr: $ => prec.right(PREC.INCR, seq(
+      field("op", choice(
+        "++",
+        "--"
+      )),
+      field("expr", $._expr),
+    )),
     //def module_access
     module_access: $ => seq(
       field("module", $.identifier),
@@ -662,9 +655,6 @@ module.exports = grammar({
       $.null_literal,
       $.blob_literal, //blob literals can be cast to structs and arrays alike
       $.func_literal,
-      //TODO:
-      // hex
-      // binary
     ),
     //def byte_literal
     byte_literal: $ => seq(

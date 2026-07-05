@@ -1661,6 +1661,30 @@ yap_expr_node yap_parse_expr_incr(yap_source* src, TSNode node){
         .kind=is_increment ? yap_expr_increment : yap_expr_decrement,
         .increment={
             .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+            .prefix=false,
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
+yap_expr_node yap_parse_expr_prefix_incr(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, expr);
+    if (ts_node_null_or_error(expr_node)){
+        yap_push_parse_error(src, node, "Missing expression in increment/decrement expression");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing expression in increment/decrement expression"), .loc=yap_ts_node_loc(node, src) };
+    }
+    yap_node_field_by_name_var(node, op);
+    bool is_increment = true;
+    if (!ts_node_null_or_error(op_node)){
+        is_increment = strus_eq(yap_node_get_val_ctx(src, op_node), "++");
+    }
+    return (yap_expr_node){
+        .kind=is_increment ? yap_expr_increment : yap_expr_decrement,
+        .increment={
+            .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+            .prefix=true,
             .loc=yap_ts_node_loc(node, src)
         },
         .loc=yap_ts_node_loc(node, src)
@@ -1911,6 +1935,8 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_expr_paren(src, node);
     }strus_case(typ, "incr_expr"){
         return yap_parse_expr_incr(src, node);
+    }strus_case(typ, "prefix_incr_expr"){
+        return yap_parse_expr_prefix_incr(src, node);
     }strus_case(typ, "ternary_expr"){
         return yap_parse_expr_ternary(src, node);
     }strus_case(typ, "member_access"){
