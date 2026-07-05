@@ -1631,14 +1631,17 @@ yap_expr_node yap_parse_expr_blueprint_hole(yap_source* src, TSNode node){
 yap_expr_node yap_parse_expr_unary(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, expr);
-    if (ts_node_null_or_error(expr_node)){
-        yap_push_parse_error(src, node, "Missing operand in unary expression");
-        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing operand in unary expression"), .loc=yap_ts_node_loc(node, src) };
+    yap_node_field_by_name_var(node, op);
+    if (ts_node_null_or_error(expr_node) || ts_node_null_or_error(op_node)){
+        yap_push_parse_error(src, node, "Missing operand or operator in unary expression");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing operand or operator in unary expression"), .loc=yap_ts_node_loc(node, src) };
     }
+    char* op_text = yap_node_get_val_ctx(src, op_node);
     return (yap_expr_node){
         .kind=yap_expr_unary,
         .unary={
             .expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+            .op=op_text[0],
             .loc=yap_ts_node_loc(node, src)
         },
         .loc=yap_ts_node_loc(node, src)

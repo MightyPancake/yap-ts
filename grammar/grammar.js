@@ -453,7 +453,7 @@ module.exports = grammar({
     },
     //def unary_expr
     unary_expr: $ => prec.right(PREC.UNARY, seq(
-      field("op", '-'),
+      field("op", choice('-', '!', '~')),
       field("expr", $._expr),
     )),
     //_assignment
