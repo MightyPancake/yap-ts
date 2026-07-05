@@ -34,6 +34,16 @@ void yap_print_error(yap_error err){
     yap_print_error_no_pos(err);
     return;
   }
+  if (!err.loc.src && !err.src){
+    /* A positioned error with no source at all -- e.g. a codegen-time check
+     * (yap_emit_error_rangef) run against a comptime-constructed expr that
+     * was never parsed from real source text (built via ct_make_* calls),
+     * so it has no yap_source to report a line/column against. Fall back to
+     * a plain message instead of dereferencing a NULL src (previously a
+     * hard crash here). */
+    yap_print_error_no_pos(err);
+    return;
+  }
     yap_source* src = err.loc.src ? err.loc.src : err.src;
     yap_code_pos start = err.loc.src ? err.loc.range.start : err.range.start;
     yap_code_pos end = err.loc.src ? err.loc.range.end : err.range.end;
