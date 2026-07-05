@@ -1378,6 +1378,29 @@ yap_expr_node yap_parse_expr_shift(yap_source* src, TSNode node){
     };
 }
 
+yap_expr_node yap_parse_expr_coalesce(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, left);
+    yap_node_field_by_name_var(node, right);
+    yap_node_field_by_name_var(node, op);
+    if (ts_node_null_or_error(left_node) || ts_node_null_or_error(right_node) || ts_node_null_or_error(op_node)){
+        yap_push_parse_error(src, node, "Missing operand or operator in coalesce expression");
+        return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing operand or operator in coalesce expression"), .loc=yap_ts_node_loc(node, src) };
+    }
+    // Sentinel char ('c'), distinct from every other bin_expr/comp_op/logic_op/shift_op
+    // code; never reaches semtree/codegen - build.c desugars this into a ternary.
+    return (yap_expr_node){
+        .kind=yap_expr_bin,
+        .bin={
+            .op='c',
+            .left=yap_ctx_one_cpy(ctx, yap_parse_expr(src, left_node)),
+            .right=yap_ctx_one_cpy(ctx, yap_parse_expr(src, right_node)),
+            .loc=yap_ts_node_loc(node, src)
+        },
+        .loc=yap_ts_node_loc(node, src)
+    };
+}
+
 yap_expr_node yap_parse_expr_assignment(yap_source* src, TSNode node){
     yap_ctx* ctx = (yap_ctx*)src->ctx;
     yap_node_field_by_name_var(node, left);
@@ -1923,6 +1946,8 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_expr_logic(src, node);
     }strus_case(typ, "shift_op"){
         return yap_parse_expr_shift(src, node);
+    }strus_case(typ, "coalesce_op"){
+        return yap_parse_expr_coalesce(src, node);
     }strus_case(typ, "block_expr"){
         /* block_expr is ( block ) ; extract the block field */
         yap_node_field_var(block_node, node, "block");

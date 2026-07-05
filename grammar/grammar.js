@@ -43,23 +43,28 @@ const PREC = {
   EXPR_STATEMENT: 1,    // expr being a statement
     // Precedence for variable declarations (one higher than EXPR_STATEMENT)
   VAR_DECL: 2,
+  // '??' desugars (build.c) to a self-parenthesizing ternary before codegen
+  // ever sees it, so unlike the tier below it doesn't need to mirror C's
+  // precedence for codegen correctness - this placement (looser than the
+  // rest, tighter than var_decl) is purely a yap-source readability choice.
+  COALESCE: 3,          // ??
   // Below: mirrors C's precedence ladder (loosest to tightest) for the
   // operators between var_decl and unary, so a flat "%s %s %s" codegen
   // emission (no defensive parens - see yap_gen_binary_expr) stays correct.
-  OR: 3,                // ||
-  AND: 4,               // &&
-  '|': 5,               // bitwise OR
-  '^': 6,               // bitwise XOR
-  '&': 7,               // bitwise AND
-  COMPARISON: 8,    // expr == expr, etc.
-  SHIFT: 9,             // <<, >>
-  '+': 10,              // +
-  '-': 10,              // -
-  '/': 11,              // /
-  '*': 11,              // *
-  '%': 11,              // %
-  UNARY: 12,             // -expr (unary minus)
-  INCR: 13,              // expr++, expr-- etc.
+  OR: 4,                // ||
+  AND: 5,               // &&
+  '|': 6,               // bitwise OR
+  '^': 7,               // bitwise XOR
+  '&': 8,               // bitwise AND
+  COMPARISON: 9,    // expr == expr, etc.
+  SHIFT: 10,             // <<, >>
+  '+': 11,              // +
+  '-': 11,              // -
+  '/': 12,              // /
+  '*': 12,              // *
+  '%': 12,              // %
+  UNARY: 13,             // -expr (unary minus)
+  INCR: 14,              // expr++, expr-- etc.
   PAREN: 20,            // ()
   CALL: 22,             // func()
   IF: 23,               // if
@@ -530,6 +535,12 @@ module.exports = grammar({
       )),
       field("right", $._expr),
     )),
+    // def coalesce_op
+    coalesce_op: $ => prec.left(PREC.COALESCE, seq(
+      field("left", $._expr),
+      field("op", "??"),
+      field("right", $._expr),
+    )),
     //def expr_statement
     expr_statement: $ => prec.right(PREC.EXPR_STATEMENT, seq(
       field("expr", $._expr),
@@ -561,6 +572,7 @@ module.exports = grammar({
       $.comp_op,
       $.logic_op,
       $.shift_op,
+      $.coalesce_op,
       $.expr_blueprint, //expression blueprint: expr${ expr-with-$holes } -> yExprBlueprint
       $.type_blueprint, //type blueprint: type${ struct{...} } -> yStructT/yEnumT/yUnionT (eager)
       $.stmt_blueprint, //statement blueprint: stmt${ ...stmts... } -> yStmtBlueprint (lazy)
@@ -720,7 +732,7 @@ module.exports = grammar({
     ))),
     //def identifier
     identifier : $ => /[a-zA-Z_]\w*/ ,
-    //def _macro_call ; comptime call syntax: func:(args)
+    //def _macro_call
     _macro_call: $ => prec.right(seq(
       field("macro_call", $.comptime_call),
     )),
@@ -742,7 +754,7 @@ module.exports = grammar({
       $.identifier_adding_param,
       $.macro_mut_param,
     ),
-    //def ast_param ; pass expression as yExpr AST node: #expr
+    //def ast_param
     ast_param: $ => seq(
       field("ast_op", "#"),
       field("expr", $._expr),
@@ -806,7 +818,4 @@ module.exports = grammar({
 });
 
 //TODO:
-// C ABI (bindgen.c/libclang header import exists as a standalone tool ; not wired into the main compile pipeline)
 // struct unpacking
-// ?? (null coalescing) ; ?.field (optional chaining) is implemented
-// blueprints: expr${ } done; stmt${ }, type${ }, (… fn$ …){…} in progress
