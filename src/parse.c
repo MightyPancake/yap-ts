@@ -1411,18 +1411,34 @@ yap_expr_node yap_parse_expr_func_call(yap_source* src, TSNode node){
     }
 
     uint32_t argc = ts_node_is_null(params_node) ? 0 : ts_node_named_child_count(params_node);
-    darr(yap_expr_node) args = yap_ctx_darr_new(ctx, yap_expr_node, .cap=argc, .len=0);
+    darr(yap_call_arg_node) args = yap_ctx_darr_new(ctx, yap_call_arg_node, .cap=argc, .len=0);
     if (!ts_node_is_null(params_node)){
         for_ts_named_children(params_node, p){
             const char* _pt = ts_node_type(p);
             strus_switch(_pt, "named_param"){
+                yap_node_field_by_name_var(p, name);
                 yap_node_field_by_name_var(p, value);
-                if (!ts_node_null_or_error(value_node)) darr_push(args, yap_parse_expr(src, value_node));
+                if (!ts_node_null_or_error(name_node) && !ts_node_null_or_error(value_node)){
+                    darr_push(args, ((yap_call_arg_node){
+                        .is_named = true,
+                        .name = yap_parse_identifier(src, name_node),
+                        .value = yap_ctx_one_cpy(ctx, yap_parse_expr(src, value_node)),
+                        .loc = yap_ts_node_loc(p, src)
+                    }));
+                }
             }strus_case(_pt, "unnamed_param"){
                 TSNode expr_node = yap_parse_first_child(p);
-                darr_push(args, yap_parse_expr(src, expr_node));
+                darr_push(args, ((yap_call_arg_node){
+                    .is_named = false,
+                    .value = yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
+                    .loc = yap_ts_node_loc(p, src)
+                }));
             }else{
-                darr_push(args, yap_parse_expr(src, p));
+                darr_push(args, ((yap_call_arg_node){
+                    .is_named = false,
+                    .value = yap_ctx_one_cpy(ctx, yap_parse_expr(src, p)),
+                    .loc = yap_ts_node_loc(p, src)
+                }));
             }
         }
     }
