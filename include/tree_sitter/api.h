@@ -1083,7 +1083,7 @@ void ts_query_cursor_exec_with_options(
  * Query cursors have an optional maximum capacity for storing lists of
  * in-progress captures. If this capacity is exceeded, then the
  * earliest-starting match will silently be dropped to make room for further
- * matches. This maximum capacity is optional — by default, query cursors allow
+ * matches. This maximum capacity is optional ; by default, query cursors allow
  * any number of pending matches, dynamically allocating new space for them as
  * needed as the query is executed.
  */

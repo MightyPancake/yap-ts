@@ -42,17 +42,17 @@
 #define yap_node_str(NODE) char* NODE##_str = ts_node_string(NODE)
 
 #define for_ts_children(N, C) for(TSNode C=ts_node_child(N, 0); !ts_node_is_null(C); C=ts_node_next_sibling(C))
-// Only named nodes — skips anonymous nodes (punctuation, keywords, etc.)
+// Only named nodes ; skips anonymous nodes (punctuation, keywords, etc.)
 #define for_ts_named_children(N, C) for(TSNode C=ts_node_named_child(N, 0); !ts_node_is_null(C); C=ts_node_next_named_sibling(C))
 
 #define yap_node_get_field(NODE, NAME) (ts_node_child_by_field_name(NODE, NAME, strlen(NAME)))
 #define yap_node_field_var(VAR_NAME, NODE, NAME) TSNode VAR_NAME = yap_node_get_field(NODE, NAME)
 
-// Checks null only — does NOT push an error, caller is responsible
+// Checks null only ; does NOT push an error, caller is responsible
 #define yap_node_field_var_check(VAR_NAME, NODE, NAME, RET_TYP, MSG) yap_node_field_var(VAR_NAME, NODE, NAME); \
 if (ts_node_null_or_error(VAR_NAME)) return yap_error_result(RET_TYP, MSG)
 
-// Checks null/error AND pushes to ctx->errors — use at the detection site
+// Checks null/error AND pushes to ctx->errors ; use at the detection site
 #define yap_node_field_var_check_push(VAR_NAME, NODE, NAME, RET_TYP, MSG, SRC) \
   yap_node_field_var(VAR_NAME, NODE, NAME); \
   if (ts_node_null_or_error(VAR_NAME)) { \
@@ -60,7 +60,7 @@ if (ts_node_null_or_error(VAR_NAME)) return yap_error_result(RET_TYP, MSG)
     return yap_error_result(RET_TYP, MSG); \
   }
 
-// Guard for the node passed into a parse function — catches already-poisoned input
+// Guard for the node passed into a parse function ; catches already-poisoned input
 #define yap_node_guard(NODE, RET_TYP, MSG, SRC) \
   if (ts_node_null_or_error(NODE)) { \
     yap_ctx_push_error((SRC)->ctx, yap_node_error(SRC, NODE, MSG)); \

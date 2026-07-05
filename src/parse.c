@@ -1856,7 +1856,7 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
     }strus_case(typ, "comp_op"){
         return yap_parse_expr_comp(src, node);
     }strus_case(typ, "block_expr"){
-        /* block_expr is ( block ) — extract the block field */
+        /* block_expr is ( block ) ; extract the block field */
         yap_node_field_var(block_node, node, "block");
         if (ts_node_null_or_error(block_node)){
             yap_push_parse_error(src, node, "Missing block in block expression");

@@ -685,7 +685,7 @@ module.exports = grammar({
     ))),
     //def identifier
     identifier : $ => /[a-zA-Z_]\w*/ ,
-    //def _macro_call — comptime call syntax: func:(args)
+    //def _macro_call ; comptime call syntax: func:(args)
     _macro_call: $ => prec.right(seq(
       field("macro_call", $.comptime_call),
     )),
@@ -707,7 +707,7 @@ module.exports = grammar({
       $.identifier_adding_param,
       $.macro_mut_param,
     ),
-    //def ast_param — pass expression as yExpr AST node: #expr
+    //def ast_param ; pass expression as yExpr AST node: #expr
     ast_param: $ => seq(
       field("ast_op", "#"),
       field("expr", $._expr),
@@ -728,11 +728,11 @@ module.exports = grammar({
       $.module_access,
       $.method_access,
     ),
-    //def blueprint_hole — $name placeholder inside a blueprint. Atomic token so it
+    //def blueprint_hole ; $name placeholder inside a blueprint. Atomic token so it
     //never collides with a keyword opener like "expr${" ('{'/'(' aren't identifier
     //chars, so the hole token can't swallow an opener). Leading '$' stripped in parse.c.
     blueprint_hole: $ => token(seq('$', /[a-zA-Z_]\w*/)),
-    //def expr_blueprint — quasi-quote: expr${ <expr, may contain $holes> } -> yExprBlueprint.
+    //def expr_blueprint ; quasi-quote: expr${ <expr, may contain $holes> } -> yExprBlueprint.
     //Opener is the atomic token "expr${" (contiguous), so `expr` stays usable as an
     //identifier elsewhere. Desugars (build.c) to yapi-> builder calls; holes -> yapi->hole(name).
     expr_blueprint: $ => seq(
@@ -740,7 +740,7 @@ module.exports = grammar({
       field("expr", $._expr),
       field("expr_end", '}'),
     ),
-    //def type_blueprint — eager quasi-quote of an anonymous type: type${ struct {...} }
+    //def type_blueprint ; eager quasi-quote of an anonymous type: type${ struct {...} }
     //-> yStructT/yEnumT/yUnionT (Model A: a template you :finish("name") yourself). $T in a
     //field type position eagerly splices the in-scope comptime yType. Opener is atomic "type${".
     type_blueprint: $ => seq(
@@ -748,7 +748,7 @@ module.exports = grammar({
       field("body", choice($.anon_struct_type, $.anon_enum_type, $.anon_union_type)),
       field("type_end", '}'),
     ),
-    //def stmt_blueprint — lazy quasi-quote of a statement sequence: stmt${ ...stmts... }
+    //def stmt_blueprint ; lazy quasi-quote of a statement sequence: stmt${ ...stmts... }
     //-> yStmtBlueprint. $holes desugar to yapi->hole; fill via :fill_expr(...):finish().
     //Opener is atomic "stmt${". Named children are the statements (like a block body).
     stmt_blueprint: $ => seq(
@@ -756,7 +756,7 @@ module.exports = grammar({
       repeat($._statement),
       field("stmt_end", '}'),
     ),
-    //def fn_blueprint — eager function blueprint: reuses the anon func-literal shape with
+    //def fn_blueprint ; eager function blueprint: reuses the anon func-literal shape with
     //'fn' -> 'fn$'. (RET fn$ params){body} -> yFnT (Model A: you :finish("name") it). $T in
     //a param/return type eagerly splices the in-scope comptime yType.
     fn_blueprint: $ => seq(
@@ -771,7 +771,7 @@ module.exports = grammar({
 });
 
 //TODO:
-// C ABI (bindgen.c/libclang header import exists as a standalone tool — not wired into the main compile pipeline)
+// C ABI (bindgen.c/libclang header import exists as a standalone tool ; not wired into the main compile pipeline)
 // struct unpacking
-// ?? (null coalescing) — ?.field (optional chaining) is implemented
+// ?? (null coalescing) ; ?.field (optional chaining) is implemented
 // blueprints: expr${ } done; stmt${ }, type${ }, (… fn$ …){…} in progress
