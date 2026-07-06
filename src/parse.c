@@ -385,10 +385,38 @@ yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
     }
     yap_identifier_node module_name = yap_parse_identifier(src, name_node);
     yap_log("Module declaration: name='%s'", module_name.value ? module_name.value : "(anon)");
+
+    /* module_info is optional ('module foo {}' with no body is valid) and,
+     * when present, a flat comma_sep list of "key: value" items -- prefix
+     * and version are the only keys anything currently reads, and both are
+     * always written as plain string literals (never num/bool), so other
+     * value kinds are silently skipped rather than erroring. */
+    char* prefix = NULL;
+    char* version = NULL;
+    yap_node_field_by_name_var(node, module_info);
+    if (!ts_node_null_or_error(module_info_node)){
+        for_ts_named_children(module_info_node, item_node){
+            yap_node_field_by_name_var(item_node, key);
+            yap_node_field_by_name_var(item_node, value);
+            if (ts_node_null_or_error(key_node) || ts_node_null_or_error(value_node)) continue;
+            yap_identifier_node key_ident = yap_parse_identifier(src, key_node);
+            if (!key_ident.value) continue;
+            if (strus_eq(ts_node_type(value_node), "string_literal")){
+                yap_literal_node value_lit = yap_parse_string_literal(src, value_node);
+                if (strus_eq(key_ident.value, "prefix")) prefix = value_lit.string.value;
+                else if (strus_eq(key_ident.value, "version")) version = value_lit.string.value;
+            }
+        }
+    }
+    yap_log("Module declaration: prefix='%s' version='%s'",
+        prefix ? prefix : "(default)", version ? version : "(none)");
+
     return (yap_decl_node){
         .kind=yap_decl_module_decl,
         .module_decl={
             .name=module_name,
+            .prefix=prefix,
+            .version=version,
             .loc=yap_ts_node_loc(node, src),
         }
     };
