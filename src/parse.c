@@ -1907,7 +1907,8 @@ yap_macro_call_node yap_parse_macro_call(yap_source* src, TSNode node){
                     .mut_expr=yap_ctx_one_cpy(ctx, yap_parse_expr(src, expr_node)),
                     .loc=yap_ts_node_loc(inner_p, src),
                 }));
-            }else if (strus_eq(pt, "array_type") || strus_eq(pt, "slice_type") || strus_eq(pt, "function_type")){
+            }else if (strus_eq(pt, "array_type") || strus_eq(pt, "slice_type") || strus_eq(pt, "function_type")
+                    || strus_eq(pt, "const_type") || strus_eq(pt, "pointer_type")){
                 darr_push(params, ((yap_macro_param_node){
                     .kind=yap_macro_param_type,
                     .type_node=yap_ctx_one_cpy(ctx, yap_parse_type_node(src, inner_p)),

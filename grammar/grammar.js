@@ -744,13 +744,22 @@ module.exports = grammar({
       $.identifier_adding_param,
       $.macro_mut_param,
       // Compound type spellings that have no _expr equivalent (unlike bare
-      // identifiers/pointer-of/module_access, already reachable -- and
-      // resolved -- via unnamed_param's $._expr): array_type/slice_type/
-      // function_type only ever existed under $.typ before this. Added so
-      // e.g. `arr->arr:(i32[4])` parses at all.
+      // identifiers/pointer-of/module_access/parens/nested-macro-calls,
+      // already reachable -- and resolved -- via unnamed_param's $._expr):
+      // array_type/slice_type/function_type/const_type only ever existed
+      // under $.typ before this. Added so e.g. `arr->arr:(i32[4])` parses.
       $.array_type,
       $.slice_type,
       $.function_type,
+      $.const_type,
+      // pointer_type DOES overlap with $._expr's at_op for a bare scalar
+      // (`i32@` could now parse as either at_op or pointer_type) -- added
+      // anyway so pointer-of-compound (`i32[4]@`, which has no at_op form at
+      // all, since `i32[4]` alone isn't a valid _expr) can parse. Harmless
+      // either way the scalar case resolves: yap_resolve_macro_type_arg's
+      // at_op path and yap_build_type_from_type_node's pointer_type path both
+      // land on the same yap_type_id (build.c).
+      $.pointer_type,
     ),
     //def ast_param
     ast_param: $ => seq(
