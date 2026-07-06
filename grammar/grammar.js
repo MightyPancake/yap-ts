@@ -743,6 +743,14 @@ module.exports = grammar({
       $._statement,
       $.identifier_adding_param,
       $.macro_mut_param,
+      // Compound type spellings that have no _expr equivalent (unlike bare
+      // identifiers/pointer-of/module_access, already reachable -- and
+      // resolved -- via unnamed_param's $._expr): array_type/slice_type/
+      // function_type only ever existed under $.typ before this. Added so
+      // e.g. `arr->arr:(i32[4])` parses at all.
+      $.array_type,
+      $.slice_type,
+      $.function_type,
     ),
     //def ast_param
     ast_param: $ => seq(
