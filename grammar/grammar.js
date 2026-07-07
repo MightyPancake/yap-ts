@@ -72,6 +72,7 @@ module.exports = grammar({
     [$.macro_declaration, $.macro_expr, $.macro_type],
     [$.macro_expr, $.macro_type],
     [$.typ, $._expr],
+    [$.macro_expr, $._expr],
   ],
   //Things to ignore
   extras: $ => [
