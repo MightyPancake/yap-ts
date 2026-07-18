@@ -24,10 +24,7 @@ static bool yap_error_already_reported(yap_ctx* ctx, yap_source* src, TSNode nod
 static void yap_push_parse_error(yap_source* src, TSNode node, const char* fmt, ...){
     if (!src || !src->ctx || !fmt) return;
 
-    // yap_check_tree_errors() already walks the whole tree once up front and
-    // reports every genuine tree-sitter ERROR node; AST-building code below
-    // re-visits the same broken node while building decls/statements/exprs,
-    // so without this check the same syntax error gets reported twice.
+    // Without this, the same ERROR node gets reported twice: once by yap_check_tree_errors()'s upfront walk, once when AST-building re-visits it.
     if (ts_node_is_error(node) && yap_error_already_reported(src->ctx, src, node))
         return;
 
@@ -321,7 +318,7 @@ yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
 
     char* mod_path = NULL;
     for_darr(i, lookup_path, ctx->module_lookup_paths){
-        char* candidate = strus_newf("%s/%s/mod.yap", lookup_path, module_name.value);
+        char* candidate = strus_newf("%s/%s/mod.yp", lookup_path, module_name.value);
         if (access(candidate, R_OK) == 0){
             mod_path = candidate;
             break;
@@ -333,7 +330,7 @@ yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
         yap_log("Found module '%s' at '%s'", module_name.value, mod_path);
         char* resolved = yap_resolve_path(mod_path);
         char* identity = yap_ctx_strus_cpy(ctx, resolved);
-        char* display = yap_ctx_strus_newf(ctx, "%s/mod.yap", module_name.value);
+        char* display = yap_ctx_strus_newf(ctx, "%s/mod.yp", module_name.value);
         free(mod_path);
 
         yap_source* parent = yap_ctx_top_source(ctx);
@@ -386,11 +383,7 @@ yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
     yap_identifier_node module_name = yap_parse_identifier(src, name_node);
     yap_log("Module declaration: name='%s'", module_name.value ? module_name.value : "(anon)");
 
-    /* module_info is optional ('module foo {}' with no body is valid) and,
-     * when present, a flat comma_sep list of "key: value" items -- prefix
-     * and version are the only keys anything currently reads, and both are
-     * always written as plain string literals (never num/bool), so other
-     * value kinds are silently skipped rather than erroring. */
+    /* module_info items besides "prefix"/"version" string literals are silently skipped, not errored. */
     char* prefix = NULL;
     char* version = NULL;
     yap_node_field_by_name_var(node, module_info);
@@ -909,11 +902,7 @@ yap_identifier_node yap_parse_identifier(yap_source* src, TSNode node){
         return (yap_identifier_node){ .value=name, .is_hole=true, .loc=yap_ts_node_loc(node, src) };
     }
 
-    /* If we got a wrapper node (typ, pointer_type, function_type, etc.),
-       try to descend to the first named child that is an identifier. If
-       none exists, fall back to returning the raw text of the whole node
-       as the identifier value (this covers function types, pointer
-       annotations, etc.). */
+    /* Wrapper node (typ/pointer_type/function_type/...): descend to find an identifier child, else fall back to raw text. */
     TSNode child = yap_parse_first_child(node);
     while (!ts_node_null_or_error(child)){
         if (strus_eq(ts_node_type(child), "identifier")){

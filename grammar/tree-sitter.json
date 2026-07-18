@@ -7,7 +7,7 @@
       "title": "Yap",
       "scope": "source.yap",
       "file-types": [
-        "yap"
+        "yp"
       ],
       "injection-regex": "^yap$",
       "class-name": "TreeSitterYap"

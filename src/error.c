@@ -35,12 +35,7 @@ void yap_print_error(yap_error err){
     return;
   }
   if (!err.loc.src && !err.src){
-    /* A positioned error with no source at all -- e.g. a codegen-time check
-     * (yap_emit_error_rangef) run against a comptime-constructed expr that
-     * was never parsed from real source text (built via ct_make_* calls),
-     * so it has no yap_source to report a line/column against. Fall back to
-     * a plain message instead of dereferencing a NULL src (previously a
-     * hard crash here). */
+    /* No source at all (e.g. a comptime-constructed expr never parsed from real text) -- fall back to a plain message instead of deref'ing NULL src (previously a hard crash). */
     yap_print_error_no_pos(err);
     return;
   }
@@ -51,8 +46,8 @@ void yap_print_error(yap_error err){
   // char* src_stack = strus_newf("In file: %s\n"err.src->path);
   err_printf(aesc_red "Error" aesc_reset);
   err_printf(" in "aesc_cyan"%s"aesc_reset" at "aesc_yellow "%d:%d\n" aesc_reset, src->label, start.line+1, start.column);
-  // err_printf("         └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
-  // err_printf("           └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yap");
+  // err_printf("         └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yp");
+  // err_printf("           └─ from " aesc_cyan"%s"aesc_reset"\n", "some/file.yp");
   yap_source* parent = (yap_source*)src->parent;
   int depth = 1;
   yap_source *current = src;
@@ -99,9 +94,6 @@ void yap_print_error(yap_error err){
     if (start.offset <= offset && offset < end.offset){
       err_printf(aesc_red aesc_style("27") aesc_style("4") aesc_style("5") );
       style_flag = true;
-    // }else if (start.line <= line && line <= end.line){
-    //   err_printf(aesc_style("100") aesc_black);
-    //   style_flag = true;
     }else if (style_flag){
       err_printf(aesc_reset );
       style_flag = false;

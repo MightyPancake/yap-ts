@@ -92,5 +92,5 @@ clean:
 
 copy:
 	rsync -a --exclude='.git' ./ $(shell yap -C)/yap-ts/
-	cp ./test/test.yap $(shell yap -C)../examples/
+	cp ./test/test.yp $(shell yap -C)../examples/
 

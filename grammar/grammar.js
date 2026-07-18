@@ -78,11 +78,6 @@ module.exports = grammar({
   extras: $ => [
     // whitespace in general
     /\s+/,
-    //def single_line_comment
-    // token(/\/\/[^\r\n]*(\n|\r)/),
-    // token(seq("//", /[^\n]*/)),
-    // //def multi_line_comment
-    // token(seq('/*', /[^*]*\*+([^/*][^*]*\*+)*\//)),
     $._comment,
   ],
   //Rules (aka the meat)
@@ -744,22 +739,12 @@ module.exports = grammar({
       $._statement,
       $.identifier_adding_param,
       $.macro_mut_param,
-      // Compound type spellings that have no _expr equivalent (unlike bare
-      // identifiers/pointer-of/module_access/parens/nested-macro-calls,
-      // already reachable -- and resolved -- via unnamed_param's $._expr):
-      // array_type/slice_type/function_type/const_type only ever existed
-      // under $.typ before this. Added so e.g. `arr->arr:(i32[4])` parses.
+      // array_type/slice_type/function_type/const_type: compound type spellings with no _expr equivalent, added so e.g. `arr->arr:(i32[4])` parses.
       $.array_type,
       $.slice_type,
       $.function_type,
       $.const_type,
-      // pointer_type DOES overlap with $._expr's at_op for a bare scalar
-      // (`i32@` could now parse as either at_op or pointer_type) -- added
-      // anyway so pointer-of-compound (`i32[4]@`, which has no at_op form at
-      // all, since `i32[4]` alone isn't a valid _expr) can parse. Harmless
-      // either way the scalar case resolves: yap_resolve_macro_type_arg's
-      // at_op path and yap_build_type_from_type_node's pointer_type path both
-      // land on the same yap_type_id (build.c).
+      // pointer_type overlaps at_op for bare scalars (`i32@`) but is needed for pointer-of-compound (`i32[4]@`); both paths resolve to the same yap_type_id.
       $.pointer_type,
     ),
     //def ast_param
@@ -783,37 +768,27 @@ module.exports = grammar({
       $.module_access,
       $.method_access,
     ),
-    //def blueprint_hole ; $name placeholder inside a blueprint. Atomic token so it
-    //never collides with a keyword opener like "expr${" ('{'/'(' aren't identifier
-    //chars, so the hole token can't swallow an opener). Leading '$' stripped in parse.c.
+    //def blueprint_hole ; atomic token so it can't collide with an opener like "expr${". Leading '$' stripped in parse.c.
     blueprint_hole: $ => token(seq('$', /[a-zA-Z_]\w*/)),
-    //def expr_blueprint ; quasi-quote: expr${ <expr, may contain $holes> } -> yExprBlueprint.
-    //Opener is the atomic token "expr${" (contiguous), so `expr` stays usable as an
-    //identifier elsewhere. Desugars (build.c) to yapi-> builder calls; holes -> yapi->hole(name).
+    //def expr_blueprint ; expr${ expr-with-$holes } -> yExprBlueprint; desugars in build.c to yapi-> builder calls, holes -> yapi->hole(name).
     expr_blueprint: $ => seq(
       field("expr_start", "expr${"),
       field("expr", $._expr),
       field("expr_end", '}'),
     ),
-    //def type_blueprint ; eager quasi-quote of an anonymous type: type${ struct {...} }
-    //-> yStructT/yEnumT/yUnionT (Model A: a template you :finish("name") yourself). $T in a
-    //field type position eagerly splices the in-scope comptime yType. Opener is atomic "type${".
+    //def type_blueprint ; type${ struct{...} } -> yStructT/yEnumT/yUnionT, eager; you :finish("name") it yourself.
     type_blueprint: $ => seq(
       field("type_start", "type${"),
       field("body", choice($.anon_struct_type, $.anon_enum_type, $.anon_union_type)),
       field("type_end", '}'),
     ),
-    //def stmt_blueprint ; lazy quasi-quote of a statement sequence: stmt${ ...stmts... }
-    //-> yStmtBlueprint. $holes desugar to yapi->hole; fill via :fill_expr(...):finish().
-    //Opener is atomic "stmt${". Named children are the statements (like a block body).
+    //def stmt_blueprint ; stmt${ ...stmts... } -> yStmtBlueprint, lazy; $holes fill via :fill_expr(...):finish().
     stmt_blueprint: $ => seq(
       field("stmt_start", "stmt${"),
       repeat($._statement),
       field("stmt_end", '}'),
     ),
-    //def fn_blueprint ; eager function blueprint: reuses the anon func-literal shape with
-    //'fn' -> 'fn$'. (RET fn$ params){body} -> yFnT (Model A: you :finish("name") it). $T in
-    //a param/return type eagerly splices the in-scope comptime yType.
+    //def fn_blueprint ; (RET fn$ params){body} -> yFnT, eager; same shape as func_literal but with 'fn$'.
     fn_blueprint: $ => seq(
       field("open_paren", '('),
       optional(field("return_type", $.typ)),
