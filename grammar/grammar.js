@@ -72,8 +72,7 @@ module.exports = grammar({
     [$.macro_declaration, $.macro_expr, $.macro_type],
     [$.macro_expr, $.macro_type],
     [$.typ, $._expr],
-    [$.macro_expr, $._expr],
-  ],
+    // [$.macro_expr, $._expr], // unnecessary: tree-sitter reports no actual conflict here
   //Things to ignore
   extras: $ => [
     // whitespace in general
