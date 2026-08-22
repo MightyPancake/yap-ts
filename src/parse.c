@@ -1063,7 +1063,7 @@ static size_t yap_utf8_encode(uint32_t cp, char* out){
 }
 
 // Decodes backslash escapes in place (output is never longer than input, so no realloc needed)
-static void yap_decode_string_escapes(char* text){
+static size_t yap_decode_string_escapes(char* text){
     size_t len = strlen(text);
     size_t r = 0, w = 0;
     while (r < len){
@@ -1116,6 +1116,7 @@ static void yap_decode_string_escapes(char* text){
         }
     }
     text[w] = '\0';
+    return w;
 }
 
 yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node){
@@ -1153,7 +1154,7 @@ yap_literal_node yap_parse_string_literal(yap_source* src, TSNode node){
     str_lit.prefix[offset] = '\0';
     str_lit.value = text + offset; //skip prefix
     str_lit.value[strlen(str_lit.value)-1] = '\0'; //remove closing quote
-    yap_decode_string_escapes(str_lit.value);
+    str_lit.value_len = yap_decode_string_escapes(str_lit.value);
     yap_log("Parsed string literal: prefix='%s' value='%s'", str_lit.prefix, str_lit.value);
     return (yap_literal_node){
         .kind = is_cstring ? yap_literal_cstring : yap_literal_string,
