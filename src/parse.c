@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <ctype.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -309,18 +310,49 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
 /* Brings in a module without needing a syntax node to hang it off. The import is
  * recorded against the top source, so a caller outside the parse phase pushes its own.
  * False only when the module isn't on any lookup path. */
+/* A versioned <name>/<version>/mod.yp wins over a flat <name>/mod.yp, newest version
+ * first; the flat layout stays valid so existing module trees keep working. */
+static char* yap_find_module_path(yap_ctx* ctx, char* module_name){
+    for_darr(i, lookup_path, ctx->module_lookup_paths){
+        char* mod_dir = strus_newf("%s/%s", lookup_path, module_name);
+        char* best = NULL;
+        yap_version best_ver = {0};
+
+        DIR* dir = opendir(mod_dir);
+        if (dir){
+            struct dirent* ent;
+            while ((ent = readdir(dir)) != NULL){
+                yap_version v;
+                if (!yap_version_parse(ent->d_name, &v)) continue;
+
+                char* candidate = strus_newf("%s/%s/mod.yp", mod_dir, ent->d_name);
+                if (access(candidate, R_OK) == 0 && (!best || yap_version_cmp(v, best_ver) > 0)){
+                    free(best);
+                    best = candidate;
+                    best_ver = v;
+                } else {
+                    free(candidate);
+                }
+            }
+            closedir(dir);
+        }
+        free(mod_dir);
+        if (best){
+            yap_log("Module '%s': selected version %u.%u.%u", module_name, best_ver.major, best_ver.minor, best_ver.patch);
+            return best;
+        }
+
+        char* flat = strus_newf("%s/%s/mod.yp", lookup_path, module_name);
+        if (access(flat, R_OK) == 0) return flat;
+        free(flat);
+    }
+    return NULL;
+}
+
 bool yap_parse_module(yap_ctx* ctx, char* module_name, yap_loc loc){
     if (!ctx || !module_name) return false;
 
-    char* mod_path = NULL;
-    for_darr(i, lookup_path, ctx->module_lookup_paths){
-        char* candidate = strus_newf("%s/%s/mod.yp", lookup_path, module_name);
-        if (access(candidate, R_OK) == 0){
-            mod_path = candidate;
-            break;
-        }
-        free(candidate);
-    }
+    char* mod_path = yap_find_module_path(ctx, module_name);
     if (!mod_path) return false;
 
     yap_log("Found module '%s' at '%s'", module_name, mod_path);
