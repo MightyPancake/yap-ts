@@ -23,6 +23,9 @@ typedef struct yap_parser{
   map manifest_cache;
   //Versions chosen by the solver, consulted by module lookup before latest-wins.
   darr(yap_module_pin) pins;
+  //Versions fixed by yap.lock. These outrank anything a manifest asks for, which is what
+  //makes a locked build reproducible.
+  darr(yap_module_pin) locked;
 }yap_parser;
 
 kenobi_new_struct(yap_cached_manifest,

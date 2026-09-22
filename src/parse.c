@@ -94,6 +94,24 @@ yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
     }
     char* identity = yap_ctx_strus_cpy(ctx, resolved_path);
 
+    /* A lock beside the source fixes every version up front, so nothing below needs to
+     * choose. Without one the graph is solved from the manifest instead. */
+    char* src_dir = yap_get_parent_dir(resolved_path);
+    if (src_dir){
+        char* lock_path = strus_newf("%s/yap.lock", src_dir);
+        yap_module_decl_node lock = {0};
+        if (yap_read_manifest(ctx, lock_path, &lock) && lock.deps){
+            yap_parser* parser = res->parser_ctx;
+            for_darr(i, dep, lock.deps){
+                if (!dep.name || dep.kind != yap_dep_exact) continue;
+                darr_push(parser->locked, ((yap_module_pin){ .name = dep.name, .version = dep.version }));
+            }
+            yap_log("Read %d locked versions from yap.lock", darr_len(parser->locked));
+        }
+        free(lock_path);
+        free(src_dir);
+    }
+
     /* The root manifest is readable without parsing, so the graph can be solved before
      * the first import commits anyone to a version. */
     yap_module_decl_node root_manifest = {0};
@@ -349,6 +367,11 @@ bool yap_read_manifest(yap_ctx* ctx, char* path, yap_module_decl_node* out){
         .imports = darr_new(yap_import),
     };
 
+    /* This is a speculative read: the file will be parsed properly later and will report
+     * its own problems then, against a source that outlives the call. Anything raised here
+     * would point at the stack, so the error list is rolled back afterwards. */
+    size_t errors_before = darr_len(ctx->errors);
+
     TSTree* tree = ts_parser_parse_string(parser->parser, NULL, probe.content, probe.sz);
     TSNode root = ts_tree_root_node(tree);
 
@@ -366,6 +389,11 @@ bool yap_read_manifest(yap_ctx* ctx, char* path, yap_module_decl_node* out){
     ts_tree_delete(tree);
     darr_free(probe.imports);
     free(content);
+
+    while (darr_len(ctx->errors) > errors_before){
+        yap_error dropped = darr_pop(ctx->errors);
+        free(dropped.msg);
+    }
 
     yap_cache_manifest(parser, yap_ctx_strus_cpy(ctx, path), found ? *out : (yap_module_decl_node){0}, found);
     return found;
@@ -390,6 +418,23 @@ static bool yap_importer_constraint(yap_ctx* ctx, yap_source* importer, char* na
  * first; the flat layout stays valid so existing module trees keep working. */
 static char* yap_find_module_path(yap_ctx* ctx, char* module_name){
     yap_parser* parser = ctx->parser_ctx;
+
+    if (parser){
+        for_darr(li, lock, parser->locked){
+            if (strcmp(lock.name, module_name) != 0) continue;
+            for_darr(pi, lookup_path, ctx->module_lookup_paths){
+                char* path = strus_newf("%s/%s/%u.%u.%u/mod.yp", lookup_path, module_name,
+                                        lock.version.major, lock.version.minor, lock.version.patch);
+                if (access(path, R_OK) == 0){
+                    yap_log("Module '%s': locked to %u.%u.%u", module_name,
+                        lock.version.major, lock.version.minor, lock.version.patch);
+                    return path;
+                }
+                free(path);
+            }
+            break;
+        }
+    }
 
     yap_dep_node constraint;
     if (yap_importer_constraint(ctx, yap_ctx_top_source(ctx), module_name, &constraint)

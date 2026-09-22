@@ -22,6 +22,7 @@ yap_parser* yap_new_parser(yap_ctx* ctx){
          .parsing_stack=darr_new(char*),
          .manifest_cache=new_cached_manifest_map(),
          .pins=darr_new(yap_module_pin),
+         .locked=darr_new(yap_module_pin),
      }));
     return parser;
 }
@@ -41,6 +42,7 @@ void yap_free_parser(yap_parser* ps){
     }
     darr_free(ps->parsing_stack);
     darr_free(ps->pins);
+    darr_free(ps->locked);
     free(ps);
 }
 
