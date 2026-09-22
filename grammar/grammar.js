@@ -120,12 +120,20 @@ module.exports = grammar({
     module_info_item: $ => seq(
       field("key", $.identifier),
       field("assign", ":"),
-      field("value", choice(
-        $.string_literal,
-        $.num_literal,
-        $.bool_literal,
-      ))
+      field("value", $._module_info_value)
     ),
+    //def _module_info_value
+    _module_info_value: $ => choice(
+      $.string_literal,
+      $.num_literal,
+      $.bool_literal,
+      $.module_info_list,
+      $.module_info_object,
+    ),
+    //def module_info_list
+    module_info_list: $ => seq('[', optional(comma_sep($._module_info_value)), ']'),
+    //def module_info_object
+    module_info_object: $ => seq('{', optional($.module_info), '}'),
     //def module_import_declaration
     module_import_declaration: $ => seq(
       field("import", "import"),

@@ -382,6 +382,133 @@ yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
     };
 }
 
+static char* yap_module_info_string(yap_source* src, TSNode value_node, const char* key){
+    if (!strus_eq(ts_node_type(value_node), "string_literal")){
+        yap_push_parse_error(src, value_node, "Module info '%s' must be a string", key);
+        return NULL;
+    }
+    return yap_parse_string_literal(src, value_node).string.value;
+}
+
+/* "1.2.3", "^1.2.3", "latest" or "local"; bare is exact, ranges carry a sigil. */
+static bool yap_parse_dep_spec(yap_source* src, TSNode node, char* spec, yap_dep_node* dep){
+    if (!spec || !spec[0]){
+        yap_push_parse_error(src, node, "Empty version spec for dependency '%s'", dep->name);
+        return false;
+    }
+    if (strus_eq(spec, "latest")){ dep->kind = yap_dep_latest; return true; }
+    if (strus_eq(spec, "local")){  dep->kind = yap_dep_local;  return true; }
+
+    dep->kind = (spec[0] == '^') ? yap_dep_caret : yap_dep_exact;
+    if (yap_version_parse(spec[0] == '^' ? spec + 1 : spec, &dep->version)) return true;
+
+    yap_push_parse_error(src, node,
+        "Invalid version spec '%s' for dependency '%s'; expected major.minor.patch, ^major.minor.patch, latest or local",
+        spec, dep->name);
+    return false;
+}
+
+static bool yap_parse_dep_string(yap_source* src, TSNode node, yap_dep_node* dep){
+    char* text = yap_parse_string_literal(src, node).string.value;
+    if (!text || !text[0]){
+        yap_push_parse_error(src, node, "Empty dependency entry");
+        return false;
+    }
+
+    char* at = strchr(text, '@');
+    if (!at){
+        dep->name = text;
+        dep->kind = yap_dep_latest;
+        return true;
+    }
+    if (at == text){
+        yap_push_parse_error(src, node, "Dependency '%s' is missing a name", text);
+        return false;
+    }
+
+    dep->name = yap_ctx_strus_cpy(src->ctx, text);
+    dep->name[at - text] = '\0';
+    return yap_parse_dep_spec(src, node, dep->name + (at - text) + 1, dep);
+}
+
+static bool yap_parse_dep_object(yap_source* src, TSNode node, yap_dep_node* dep){
+    char* spec = NULL;
+    TSNode spec_node = node;
+
+    /* module_info_object wraps its items in a module_info node. */
+    TSNode info = ts_node_named_child(node, 0);
+    if (ts_node_null_or_error(info)){
+        yap_push_parse_error(src, node, "Dependency is missing a name");
+        return false;
+    }
+
+    for_ts_named_children(info, item_node){
+        yap_node_field_by_name_var(item_node, key);
+        yap_node_field_by_name_var(item_node, value);
+        if (ts_node_null_or_error(key_node) || ts_node_null_or_error(value_node)) continue;
+        yap_identifier_node key_ident = yap_parse_identifier(src, key_node);
+        if (!key_ident.value) continue;
+
+        char** slot = NULL;
+        if      (strus_eq(key_ident.value, "name"))     slot = &dep->name;
+        else if (strus_eq(key_ident.value, "version")){ slot = &spec; spec_node = value_node; }
+        else if (strus_eq(key_ident.value, "git"))      slot = &dep->git;
+        else if (strus_eq(key_ident.value, "tag"))      slot = &dep->tag;
+        else if (strus_eq(key_ident.value, "rev"))      slot = &dep->rev;
+        else if (strus_eq(key_ident.value, "branch"))   slot = &dep->branch;
+        else if (strus_eq(key_ident.value, "path"))     slot = &dep->path;
+        else if (strus_eq(key_ident.value, "registry")) slot = &dep->registry;
+        else {
+            yap_push_parse_error(src, key_node, "Unknown key '%s' in dependency", key_ident.value);
+            return false;
+        }
+        *slot = yap_module_info_string(src, value_node, key_ident.value);
+        if (!*slot) return false;
+    }
+
+    if (!dep->name){
+        yap_push_parse_error(src, node, "Dependency is missing a name");
+        return false;
+    }
+
+    int sources = (dep->git ? 1 : 0) + (dep->path ? 1 : 0) + (dep->registry ? 1 : 0);
+    if (sources > 1){
+        yap_push_parse_error(src, node, "Dependency '%s' names more than one source", dep->name);
+        return false;
+    }
+    if ((dep->tag || dep->rev || dep->branch) && !dep->git){
+        yap_push_parse_error(src, node, "Dependency '%s' has a git ref but no git source", dep->name);
+        return false;
+    }
+    if (dep->path) dep->kind = yap_dep_local;
+
+    return spec ? yap_parse_dep_spec(src, spec_node, spec, dep) : true;
+}
+
+static darr(yap_dep_node) yap_parse_module_deps(yap_source* src, TSNode list_node){
+    yap_ctx* ctx = src->ctx;
+    if (!strus_eq(ts_node_type(list_node), "module_info_list")){
+        yap_push_parse_error(src, list_node, "Module info 'deps' must be a list");
+        return NULL;
+    }
+
+    darr(yap_dep_node) deps = yap_ctx_darr_new(ctx, yap_dep_node,
+        .cap = ts_node_named_child_count(list_node) + 1, .len = 0);
+
+    for_ts_named_children(list_node, entry){
+        yap_dep_node dep = { .kind = yap_dep_latest, .loc = yap_ts_node_loc(entry, src) };
+        bool ok = strus_eq(ts_node_type(entry), "module_info_object")
+            ? yap_parse_dep_object(src, entry, &dep)
+            : yap_parse_dep_string(src, entry, &dep);
+        if (!ok) continue;
+        yap_log("Dependency: name='%s' kind=%d version=%u.%u.%u src=%s",
+            dep.name, dep.kind, dep.version.major, dep.version.minor, dep.version.patch,
+            dep.git ? dep.git : (dep.path ? dep.path : (dep.registry ? dep.registry : "(lookup)")));
+        darr_push(deps, dep);
+    }
+    return deps;
+}
+
 yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
     yap_decl_node res = {.kind=yap_decl_error};
     if (ts_node_null_or_error(node)){
@@ -400,9 +527,9 @@ yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
     yap_identifier_node module_name = yap_parse_identifier(src, name_node);
     yap_log("Module declaration: name='%s'", module_name.value ? module_name.value : "(anon)");
 
-    /* module_info items besides "prefix"/"version" string literals are silently skipped, not errored. */
     char* prefix = NULL;
     char* version = NULL;
+    darr(yap_dep_node) deps = NULL;
     yap_node_field_by_name_var(node, module_info);
     if (!ts_node_null_or_error(module_info_node)){
         for_ts_named_children(module_info_node, item_node){
@@ -411,11 +538,18 @@ yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
             if (ts_node_null_or_error(key_node) || ts_node_null_or_error(value_node)) continue;
             yap_identifier_node key_ident = yap_parse_identifier(src, key_node);
             if (!key_ident.value) continue;
-            if (strus_eq(ts_node_type(value_node), "string_literal")){
-                yap_literal_node value_lit = yap_parse_string_literal(src, value_node);
-                if (strus_eq(key_ident.value, "prefix")) prefix = value_lit.string.value;
-                else if (strus_eq(key_ident.value, "version")) version = value_lit.string.value;
+
+            if      (strus_eq(key_ident.value, "prefix"))  prefix  = yap_module_info_string(src, value_node, "prefix");
+            else if (strus_eq(key_ident.value, "version")) version = yap_module_info_string(src, value_node, "version");
+            else if (strus_eq(key_ident.value, "deps"))    deps    = yap_parse_module_deps(src, value_node);
+            /* Descriptive keys are part of the schema but nothing reads them. */
+            else if (strus_eq(key_ident.value, "author")
+                  || strus_eq(key_ident.value, "webpage")
+                  || strus_eq(key_ident.value, "license")
+                  || strus_eq(key_ident.value, "description")){
+                yap_module_info_string(src, value_node, key_ident.value);
             }
+            else yap_push_parse_error(src, key_node, "Unknown key '%s' in module declaration", key_ident.value);
         }
     }
     yap_log("Module declaration: prefix='%s' version='%s'",
@@ -427,6 +561,7 @@ yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
             .name=module_name,
             .prefix=prefix,
             .version=version,
+            .deps=deps,
             .loc=yap_ts_node_loc(node, src),
         }
     };
