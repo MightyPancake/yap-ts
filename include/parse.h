@@ -39,6 +39,7 @@ yap_decl_node yap_parse_struct_decl(yap_source* src, TSNode node);
 yap_decl_node yap_parse_enum_decl(yap_source* src, TSNode node);
 yap_decl_node yap_parse_union_decl(yap_source* src, TSNode node);
 yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node);
+bool yap_parse_module(yap_ctx* ctx, char* module_name, yap_loc loc);
 yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node);
 yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node);
 

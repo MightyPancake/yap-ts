@@ -297,6 +297,53 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
     return res;
 }
 
+/* Locates a module by name, parses its mod.yp and tags every source that parse pulled
+ * in as belonging to the module. Split out of yap_parse_module_import_decl so a module
+ * can also be brought in without a syntax node to hang it off -- the import is recorded
+ * against whatever source is on top of the stack, so a caller outside the parse phase
+ * pushes its own first. Returns false only when the module isn't on any lookup path. */
+bool yap_parse_module(yap_ctx* ctx, char* module_name, yap_loc loc){
+    if (!ctx || !module_name) return false;
+
+    char* mod_path = NULL;
+    for_darr(i, lookup_path, ctx->module_lookup_paths){
+        char* candidate = strus_newf("%s/%s/mod.yp", lookup_path, module_name);
+        if (access(candidate, R_OK) == 0){
+            mod_path = candidate;
+            break;
+        }
+        free(candidate);
+    }
+    if (!mod_path) return false;
+
+    yap_log("Found module '%s' at '%s'", module_name, mod_path);
+    char* resolved = yap_resolve_path(mod_path);
+    char* identity = yap_ctx_strus_cpy(ctx, resolved);
+    char* display = yap_ctx_strus_newf(ctx, "%s/mod.yp", module_name);
+    free(mod_path);
+
+    yap_source* parent = yap_ctx_top_source(ctx);
+    if (parent){
+        yap_import imp = {
+            .kind = yap_import_module,
+            .module_name = yap_ctx_strus_cpy(ctx, module_name),
+            .loc = loc
+        };
+        darr_push(parent->imports, imp);
+    }
+
+    size_t sources_before = darr_len(ctx->sources);
+    yap_parse_file(ctx, display, identity, loc);
+    free(resolved);
+
+    char* mod_tag = yap_ctx_strus_cpy(ctx, module_name);
+    for (size_t si = sources_before; si < darr_len(ctx->sources); si++){
+        if (ctx->sources[si] && !ctx->sources[si]->from_module_import)
+            ctx->sources[si]->from_module_import = mod_tag;
+    }
+    return true;
+}
+
 yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
     yap_ctx* ctx = src->ctx;
     yap_decl_node res = {.kind=yap_decl_error};
@@ -316,45 +363,8 @@ yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
     yap_identifier_node module_name = yap_parse_identifier(src, name_node);
     yap_log("Module import declaration: module='%s'", module_name.value ? module_name.value : "(anon)");
 
-    char* mod_path = NULL;
-    for_darr(i, lookup_path, ctx->module_lookup_paths){
-        char* candidate = strus_newf("%s/%s/mod.yp", lookup_path, module_name.value);
-        if (access(candidate, R_OK) == 0){
-            mod_path = candidate;
-            break;
-        }
-        free(candidate);
-    }
-
-    if (mod_path){
-        yap_log("Found module '%s' at '%s'", module_name.value, mod_path);
-        char* resolved = yap_resolve_path(mod_path);
-        char* identity = yap_ctx_strus_cpy(ctx, resolved);
-        char* display = yap_ctx_strus_newf(ctx, "%s/mod.yp", module_name.value);
-        free(mod_path);
-
-        yap_source* parent = yap_ctx_top_source(ctx);
-        if (parent){
-            yap_import imp = {
-                .kind = yap_import_module,
-                .module_name = yap_ctx_strus_cpy(ctx, module_name.value),
-                .loc = yap_ts_node_loc(node, src)
-            };
-            darr_push(parent->imports, imp);
-        }
-
-        size_t sources_before = darr_len(ctx->sources);
-        yap_parse_file(ctx, display, identity, yap_ts_node_loc(node, src));
-        free(resolved);
-
-        char* mod_tag = yap_ctx_strus_cpy(ctx, module_name.value);
-        for (size_t si = sources_before; si < darr_len(ctx->sources); si++){
-            if (ctx->sources[si] && !ctx->sources[si]->from_module_import)
-                ctx->sources[si]->from_module_import = mod_tag;
-        }
-    } else {
+    if (!yap_parse_module(ctx, module_name.value, yap_ts_node_loc(node, src)))
         yap_push_parse_error(src, node, "Module '%s' not found in any lookup path", module_name.value);
-    }
 
     return (yap_decl_node){
         .kind=yap_decl_module_import,
