@@ -81,10 +81,19 @@ yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
         printf("No source file provided\n");
         exit(1);
     }
-    char* resolved_path = yap_resolve_path(darr_first(args.extra));
+    char* source_path = darr_first(args.extra);
+    char* resolved_path = yap_resolve_path(source_path);
+    if (!resolved_path){
+        yap_ctx_push_error(ctx, (yap_error){
+            .kind = yap_error_no_pos,
+            .msg  = strus_newf("Source file '%s' not found", source_path)
+        });
+        yap_free_parser(res->parser_ctx);
+        return res;
+    }
     char* identity = yap_ctx_strus_cpy(ctx, resolved_path);
     free(resolved_path);
-    yap_parse_file(res, darr_first(args.extra), identity, (yap_loc){0});
+    yap_parse_file(res, source_path, identity, (yap_loc){0});
     yap_free_parser(res->parser_ctx);
     return res;
 }
