@@ -360,10 +360,55 @@ bool yap_read_manifest(yap_ctx* ctx, char* path, yap_module_decl_node* out){
     return found;
 }
 
+/* The constraint that governs this import is the one declared by whichever manifest
+ * encloses the importing file, so each module gets the version it asked for rather than
+ * one version chosen for the whole program. */
+static bool yap_importer_constraint(yap_ctx* ctx, yap_source* importer, char* name, yap_dep_node* out){
+    for (yap_source* s = importer; s; s = s->parent){
+        if (!s->origin) continue;
+        yap_module_decl_node manifest = {0};
+        if (!yap_read_manifest(ctx, s->origin, &manifest) || !manifest.deps) continue;
+        for_darr(i, dep, manifest.deps){
+            if (dep.name && strcmp(dep.name, name) == 0){ *out = dep; return true; }
+        }
+    }
+    return false;
+}
+
 /* A versioned <name>/<version>/mod.yp wins over a flat <name>/mod.yp, newest version
  * first; the flat layout stays valid so existing module trees keep working. */
 static char* yap_find_module_path(yap_ctx* ctx, char* module_name){
     yap_parser* parser = ctx->parser_ctx;
+
+    yap_dep_node constraint;
+    if (yap_importer_constraint(ctx, yap_ctx_top_source(ctx), module_name, &constraint)
+        && (constraint.kind == yap_dep_exact || constraint.kind == yap_dep_caret)){
+        char* best = NULL;
+        yap_version best_ver = {0};
+        for_darr(i, lookup_path, ctx->module_lookup_paths){
+            char* mod_dir = strus_newf("%s/%s", lookup_path, module_name);
+            DIR* dir = opendir(mod_dir);
+            if (dir){
+                struct dirent* ent;
+                while ((ent = readdir(dir)) != NULL){
+                    yap_version v;
+                    if (!yap_version_parse(ent->d_name, &v)) continue;
+                    if (!yap_dep_satisfied_by(constraint, v)) continue;
+                    char* candidate = strus_newf("%s/%s/mod.yp", mod_dir, ent->d_name);
+                    if (access(candidate, R_OK) == 0 && (!best || yap_version_cmp(v, best_ver) > 0)){
+                        free(best); best = candidate; best_ver = v;
+                    } else free(candidate);
+                }
+                closedir(dir);
+            }
+            free(mod_dir);
+        }
+        if (best){
+            yap_log("Module '%s': importer asked for %u.%u.%u", module_name, best_ver.major, best_ver.minor, best_ver.patch);
+            return best;
+        }
+    }
+
     if (parser){
         for_darr(pi, pin, parser->pins){
             if (strcmp(pin.name, module_name) != 0) continue;
@@ -427,6 +472,15 @@ bool yap_parse_module(yap_ctx* ctx, char* module_name, yap_loc loc){
     char* resolved = yap_resolve_path(mod_path);
     char* identity = yap_ctx_strus_cpy(ctx, resolved);
     char* display = yap_ctx_strus_newf(ctx, "%s/mod.yp", module_name);
+
+    /* The key is fixed here, where the chosen mod.yp is still in hand, so both the
+     * import record and every source of the module name the same version. */
+    yap_module_decl_node manifest = {0};
+    yap_version mod_version = {0};
+    if (yap_read_manifest(ctx, mod_path, &manifest) && manifest.version)
+        yap_version_parse(manifest.version, &mod_version);
+    char* mod_key = yap_ctx_strus_newf(ctx, "%s@%u.%u.%u", module_name,
+        mod_version.major, mod_version.minor, mod_version.patch);
     free(mod_path);
 
     yap_source* parent = yap_ctx_top_source(ctx);
@@ -434,6 +488,7 @@ bool yap_parse_module(yap_ctx* ctx, char* module_name, yap_loc loc){
         yap_import imp = {
             .kind = yap_import_module,
             .module_name = yap_ctx_strus_cpy(ctx, module_name),
+            .module_key = mod_key,
             .loc = loc
         };
         darr_push(parent->imports, imp);
@@ -443,10 +498,9 @@ bool yap_parse_module(yap_ctx* ctx, char* module_name, yap_loc loc){
     yap_parse_file(ctx, display, identity, loc);
     free(resolved);
 
-    char* mod_tag = yap_ctx_strus_cpy(ctx, module_name);
     for (size_t si = sources_before; si < darr_len(ctx->sources); si++){
         if (ctx->sources[si] && !ctx->sources[si]->from_module_import)
-            ctx->sources[si]->from_module_import = mod_tag;
+            ctx->sources[si]->from_module_import = mod_key;
     }
     return true;
 }
