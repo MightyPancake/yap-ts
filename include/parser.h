@@ -15,6 +15,8 @@ void yap_parse_file(yap_ctx* ctx, char* path, char* identity, yap_loc import_loc
 
 //Cache
 void yap_cache_source_node(yap_parser* parser, const char* absolute_path, yap_source_node* node);
+yap_cached_manifest* yap_get_cached_manifest(yap_parser* parser, const char* path);
+void yap_cache_manifest(yap_parser* parser, char* path, yap_module_decl_node decl, bool found);
 
 //Misc
 size_t yap_read_file_to_string(const char *path, char **out);

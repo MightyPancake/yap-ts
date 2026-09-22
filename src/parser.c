@@ -3,6 +3,7 @@
 #include "types.h"
 
 declare_map_for(cached_source);
+declare_map_for(cached_manifest);
 
 yap_ctx* yap_ctx_init_ts_parser(yap_ctx* ctx){
     ctx->parser_ctx = yap_new_parser(ctx);
@@ -19,6 +20,7 @@ yap_parser* yap_new_parser(yap_ctx* ctx){
          .tree=NULL,
          .source_nodes_cache=new_cached_source_map(),
          .parsing_stack=darr_new(char*),
+         .manifest_cache=new_cached_manifest_map(),
          .pins=darr_new(yap_module_pin),
      }));
     return parser;
@@ -33,6 +35,9 @@ void yap_free_parser(yap_parser* ps){
     ts_parser_delete(ps->parser);
     if (ps->source_nodes_cache) {
         hashmap_free(ps->source_nodes_cache);
+    }
+    if (ps->manifest_cache) {
+        hashmap_free(ps->manifest_cache);
     }
     darr_free(ps->parsing_stack);
     darr_free(ps->pins);
@@ -53,6 +58,18 @@ static yap_source_node* yap_get_cached_source_node(yap_parser* parser, const cha
     yap_cached_source key = { .name = (char*)absolute_path, .node = NULL };
     const yap_cached_source* found = hashmap_get(parser->source_nodes_cache, &key);
     return found ? found->node : NULL;
+}
+
+yap_cached_manifest* yap_get_cached_manifest(yap_parser* parser, const char* path){
+    if (!parser || !parser->manifest_cache || !path) return NULL;
+    yap_cached_manifest key = { .name = (char*)path };
+    return (yap_cached_manifest*)hashmap_get(parser->manifest_cache, &key);
+}
+
+void yap_cache_manifest(yap_parser* parser, char* path, yap_module_decl_node decl, bool found){
+    if (!parser || !parser->manifest_cache || !path) return;
+    yap_cached_manifest entry = { .name = path, .decl = decl, .found = found };
+    hashmap_set(parser->manifest_cache, &entry);
 }
 
 void yap_parse_file(yap_ctx* ctx, char* path, char* absolute_path, yap_loc import_loc){

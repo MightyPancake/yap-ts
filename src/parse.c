@@ -325,6 +325,12 @@ bool yap_read_manifest(yap_ctx* ctx, char* path, yap_module_decl_node* out){
     yap_parser* parser = ctx->parser_ctx;
     if (!parser) return false;
 
+    yap_cached_manifest* cached = yap_get_cached_manifest(parser, path);
+    if (cached){
+        if (cached->found) *out = cached->decl;
+        return cached->found;
+    }
+
     char* content = NULL;
     size_t sz = yap_read_file_to_string(path, &content);
     if (sz == 0 || !content) return false;
@@ -357,6 +363,8 @@ bool yap_read_manifest(yap_ctx* ctx, char* path, yap_module_decl_node* out){
     ts_tree_delete(tree);
     darr_free(probe.imports);
     free(content);
+
+    yap_cache_manifest(parser, yap_ctx_strus_cpy(ctx, path), found ? *out : (yap_module_decl_node){0}, found);
     return found;
 }
 

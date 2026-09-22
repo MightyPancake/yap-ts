@@ -18,9 +18,18 @@ typedef struct yap_parser{
   //Absolute paths currently being parsed. A file only reaches source_nodes_cache
   //once its parse finishes, so this is what catches one that imports itself back.
   darr(char*) parsing_stack;
+  //Module blocks already read. Resolution asks for the same manifest repeatedly while
+  //walking importers, and each read is a full tree-sitter parse.
+  map manifest_cache;
   //Versions chosen by the solver, consulted by module lookup before latest-wins.
   darr(yap_module_pin) pins;
 }yap_parser;
+
+kenobi_new_struct(yap_cached_manifest,
+    char* name;                 //key = absolute path
+    yap_module_decl_node decl;
+    bool found;                 //false when the file has no module block
+);
 
 kenobi_new_struct(yap_cached_source,
     char* name;              //key = absolute path (hashed/compared by declare_map_for)
