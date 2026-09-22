@@ -10,9 +10,8 @@ typedef struct yap_parser{
   //Parsed source nodes cache. Key is:
   //files - Absolute path
   map source_nodes_cache;
-  //Absolute paths currently being parsed, outermost first. A file only reaches
-  //source_nodes_cache once its parse finishes, so this is what catches a file that
-  //imports its way back to itself while still in flight.
+  //Absolute paths currently being parsed. A file only reaches source_nodes_cache
+  //once its parse finishes, so this is what catches one that imports itself back.
   darr(char*) parsing_stack;
 }yap_parser;
 

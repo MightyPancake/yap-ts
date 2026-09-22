@@ -297,11 +297,9 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
     return res;
 }
 
-/* Locates a module by name, parses its mod.yp and tags every source that parse pulled
- * in as belonging to the module. Split out of yap_parse_module_import_decl so a module
- * can also be brought in without a syntax node to hang it off -- the import is recorded
- * against whatever source is on top of the stack, so a caller outside the parse phase
- * pushes its own first. Returns false only when the module isn't on any lookup path. */
+/* Brings in a module without needing a syntax node to hang it off. The import is
+ * recorded against the top source, so a caller outside the parse phase pushes its own.
+ * False only when the module isn't on any lookup path. */
 bool yap_parse_module(yap_ctx* ctx, char* module_name, yap_loc loc){
     if (!ctx || !module_name) return false;
 

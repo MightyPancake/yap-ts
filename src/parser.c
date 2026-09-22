@@ -67,10 +67,8 @@ void yap_parse_file(yap_ctx* ctx, char* path, char* absolute_path, yap_loc impor
     }
     src->import_loc = import_loc;
 
-    /* Re-entering a file that's still being parsed higher up the import chain would
-     * recurse until the stack runs out. The outer parse already owns those declarations,
-     * so the import is left recorded but this source stays node-less and the build
-     * walks straight past it. */
+    /* Re-entering a file still being parsed would recurse until the stack runs out.
+     * The outer parse owns those decls, so this source is left node-less and skipped. */
     for_darr(i, in_flight, parser->parsing_stack){
         if (strcmp(in_flight, absolute_path) == 0){
             yap_log("Import cycle on '%s' – already being parsed, not re-entering", absolute_path);
