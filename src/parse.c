@@ -772,26 +772,33 @@ yap_decl_node yap_parse_type_declaration(yap_source* src, TSNode node){
         return (yap_decl_node){ .kind=yap_decl_error, .err=yap_node_error(src, node, "Invalid type declaration") };
     }
 
-    TSNode inner = yap_parse_first_child(node);
+    yap_node_field_by_name_var(node, bind);
+    bool is_bind = !ts_node_null_or_error(bind_node);
+
+    TSNode inner = ts_node_named_child(node, 0);
     yap_log_node(src, inner, "Parsing type declaration");
     if (ts_node_null_or_error(inner)){
         yap_push_parse_error(src, node, "Invalid type declaration");
         return (yap_decl_node){ .kind=yap_decl_error, .err=yap_node_error(src, node, "Invalid type declaration") };
     }
 
+    yap_decl_node res;
     const char* typ = ts_node_type(inner);
     strus_switch(typ, "struct_declaration"){
-        return yap_parse_struct_decl(src, inner);
+        res = yap_parse_struct_decl(src, inner);
     }strus_case(typ, "enum_declaration"){
-        return yap_parse_enum_decl(src, inner);
+        res = yap_parse_enum_decl(src, inner);
     }strus_case(typ, "union_declaration"){
-        return yap_parse_union_decl(src, inner);
+        res = yap_parse_union_decl(src, inner);
     }strus_case(typ, "forward_type_declaration"){
-        return yap_parse_forward_type_decl(src, inner);
+        res = yap_parse_forward_type_decl(src, inner);
     }else{
         yap_push_parse_error(src, inner, "Unhandled type declaration");
         return (yap_decl_node){ .kind=yap_decl_error, .err=yap_node_error(src, inner, "Unhandled type declaration") };
     }
+
+    if (res.kind == yap_decl_named_type) res.named_type_decl.is_bind = is_bind;
+    return res;
 }
 
 yap_decl_node yap_parse_func_decl(yap_source* src, TSNode node){

@@ -145,11 +145,14 @@ module.exports = grammar({
       field("path", $.string_literal)
     ),
     //def type_declaration
-    type_declaration: $ => choice(
-      $.struct_declaration,
-      $.enum_declaration,
-      $.union_declaration,
-      $.forward_type_declaration,
+    type_declaration: $ => seq(
+      optional(field("bind", "bind")),
+      choice(
+        $.struct_declaration,
+        $.enum_declaration,
+        $.union_declaration,
+        $.forward_type_declaration,
+      )
     ),
     forward_type_declaration: $ => seq(
       field("type", "type"),
