@@ -11,10 +11,11 @@ typedef struct {
     bool resolved;
 } yap_resolve_entry;
 
-/* The manifest format carries sources ahead of the fetcher that would honour them,
- * so they parse and are refused here rather than silently resolving from the lookup path. */
+/* Git deps are fetched into the project's own lookup path, so by build time they resolve
+ * like any other module. The sources with no fetcher yet are refused here rather than
+ * silently resolving to something else of the same name. */
 static bool yap_dep_source_unsupported(yap_ctx* ctx, yap_dep_node dep){
-    const char* kind = dep.git ? "git" : (dep.registry ? "registry" : (dep.path ? "path" : NULL));
+    const char* kind = dep.registry ? "registry" : (dep.path ? "path" : NULL);
     if (!kind) return false;
 
     yap_ctx_push_error(ctx, (yap_error){
@@ -98,9 +99,15 @@ static void yap_resolve_report_unsatisfiable(yap_ctx* ctx, yap_resolve_entry* e)
         free(specs);
         specs = next;
     }
+    bool from_git = false;
+    for_darr(i, c, e->constraints) if (c.git) from_git = true;
+
     yap_ctx_push_error(ctx, (yap_error){
         .kind = yap_error_no_pos,
-        .msg  = strus_newf("No version of '%s' satisfies %s", e->name, specs ? specs : "its constraints")
+        .msg  = from_git
+            ? strus_newf("No version of '%s' satisfies %s; run 'yap --fetch' to clone it",
+                         e->name, specs ? specs : "its constraints")
+            : strus_newf("No version of '%s' satisfies %s", e->name, specs ? specs : "its constraints")
     });
     free(specs);
 }

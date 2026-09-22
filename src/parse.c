@@ -322,6 +322,9 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
  * before a single module is committed to. */
 bool yap_read_manifest(yap_ctx* ctx, char* path, yap_module_decl_node* out){
     if (!ctx || !path || !out) return false;
+    /* --fetch reads manifests without a compile ever starting, so the parser is made
+     * on demand rather than assumed. */
+    if (!ctx->parser_ctx) yap_ctx_init_ts_parser(ctx);
     yap_parser* parser = ctx->parser_ctx;
     if (!parser) return false;
 
