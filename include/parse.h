@@ -40,6 +40,8 @@ yap_decl_node yap_parse_enum_decl(yap_source* src, TSNode node);
 yap_decl_node yap_parse_union_decl(yap_source* src, TSNode node);
 yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node);
 bool yap_parse_module(yap_ctx* ctx, char* module_name, yap_loc loc);
+bool yap_read_manifest(yap_ctx* ctx, char* path, yap_module_decl_node* out);
+void yap_resolve_module_versions(yap_ctx* ctx, darr(yap_dep_node) root_deps);
 yap_decl_node yap_parse_file_import_decl(yap_source* src, TSNode node);
 yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node);
 

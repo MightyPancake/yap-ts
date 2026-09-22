@@ -1,6 +1,11 @@
 #ifndef TS_YAP_TYPES_H
 #define TS_YAP_TYPES_H
 
+kenobi_new_struct(yap_module_pin,
+    char* name;
+    yap_version version;
+);
+
 typedef struct yap_parser{
   //Context pointer
   yap_ctx* ctx;
@@ -13,6 +18,8 @@ typedef struct yap_parser{
   //Absolute paths currently being parsed. A file only reaches source_nodes_cache
   //once its parse finishes, so this is what catches one that imports itself back.
   darr(char*) parsing_stack;
+  //Versions chosen by the solver, consulted by module lookup before latest-wins.
+  darr(yap_module_pin) pins;
 }yap_parser;
 
 kenobi_new_struct(yap_cached_source,

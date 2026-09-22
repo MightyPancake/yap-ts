@@ -19,6 +19,7 @@ yap_parser* yap_new_parser(yap_ctx* ctx){
          .tree=NULL,
          .source_nodes_cache=new_cached_source_map(),
          .parsing_stack=darr_new(char*),
+         .pins=darr_new(yap_module_pin),
      }));
     return parser;
 }
@@ -34,6 +35,7 @@ void yap_free_parser(yap_parser* ps){
         hashmap_free(ps->source_nodes_cache);
     }
     darr_free(ps->parsing_stack);
+    darr_free(ps->pins);
     free(ps);
 }
 

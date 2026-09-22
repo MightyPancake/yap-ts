@@ -93,6 +93,13 @@ yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
         return res;
     }
     char* identity = yap_ctx_strus_cpy(ctx, resolved_path);
+
+    /* The root manifest is readable without parsing, so the graph can be solved before
+     * the first import commits anyone to a version. */
+    yap_module_decl_node root_manifest = {0};
+    if (yap_read_manifest(ctx, resolved_path, &root_manifest) && root_manifest.deps)
+        yap_resolve_module_versions(ctx, root_manifest.deps);
+
     free(resolved_path);
     yap_parse_file(res, source_path, identity, (yap_loc){0});
     yap_free_parser(res->parser_ctx);
@@ -310,9 +317,70 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
 /* Brings in a module without needing a syntax node to hang it off. The import is
  * recorded against the top source, so a caller outside the parse phase pushes its own.
  * False only when the module isn't on any lookup path. */
+/* Reads just the module{} block out of a file: no imports followed, no source
+ * registered, nothing built. This is what lets the whole dependency graph be read
+ * before a single module is committed to. */
+bool yap_read_manifest(yap_ctx* ctx, char* path, yap_module_decl_node* out){
+    if (!ctx || !path || !out) return false;
+    yap_parser* parser = ctx->parser_ctx;
+    if (!parser) return false;
+
+    char* content = NULL;
+    size_t sz = yap_read_file_to_string(path, &content);
+    if (sz == 0 || !content) return false;
+
+    yap_source probe = {
+        .kind = yap_source_file,
+        .identity = path,
+        .label = path,
+        .origin = path,
+        .content = content,
+        .sz = sz,
+        .ctx = ctx,
+        .imports = darr_new(yap_import),
+    };
+
+    TSTree* tree = ts_parser_parse_string(parser->parser, NULL, probe.content, probe.sz);
+    TSNode root = ts_tree_root_node(tree);
+
+    bool found = false;
+    for_ts_named_children(root, n){
+        if (!strus_eq(ts_node_type(n), "module_declaration")) continue;
+        yap_decl_node decl = yap_parse_module_decl(&probe, n);
+        if (decl.kind == yap_decl_module_decl){
+            *out = decl.module_decl;
+            found = true;
+        }
+        break;
+    }
+
+    ts_tree_delete(tree);
+    darr_free(probe.imports);
+    free(content);
+    return found;
+}
+
 /* A versioned <name>/<version>/mod.yp wins over a flat <name>/mod.yp, newest version
  * first; the flat layout stays valid so existing module trees keep working. */
 static char* yap_find_module_path(yap_ctx* ctx, char* module_name){
+    yap_parser* parser = ctx->parser_ctx;
+    if (parser){
+        for_darr(pi, pin, parser->pins){
+            if (strcmp(pin.name, module_name) != 0) continue;
+            for_darr(li, lookup_path, ctx->module_lookup_paths){
+                char* pinned = strus_newf("%s/%s/%u.%u.%u/mod.yp", lookup_path, module_name,
+                                          pin.version.major, pin.version.minor, pin.version.patch);
+                if (access(pinned, R_OK) == 0){
+                    yap_log("Module '%s': using solved version %u.%u.%u",
+                        module_name, pin.version.major, pin.version.minor, pin.version.patch);
+                    return pinned;
+                }
+                free(pinned);
+            }
+            break;
+        }
+    }
+
     for_darr(i, lookup_path, ctx->module_lookup_paths){
         char* mod_dir = strus_newf("%s/%s", lookup_path, module_name);
         char* best = NULL;
