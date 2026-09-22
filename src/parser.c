@@ -18,6 +18,7 @@ yap_parser* yap_new_parser(yap_ctx* ctx){
          .parser=ts_parser,
          .tree=NULL,
          .source_nodes_cache=new_cached_source_map(),
+         .parsing_stack=darr_new(char*),
      }));
     return parser;
 }
@@ -32,6 +33,7 @@ void yap_free_parser(yap_parser* ps){
     if (ps->source_nodes_cache) {
         hashmap_free(ps->source_nodes_cache);
     }
+    darr_free(ps->parsing_stack);
     free(ps);
 }
 
@@ -64,6 +66,18 @@ void yap_parse_file(yap_ctx* ctx, char* path, char* absolute_path, yap_loc impor
         return;
     }
     src->import_loc = import_loc;
+
+    /* Re-entering a file that's still being parsed higher up the import chain would
+     * recurse until the stack runs out. The outer parse already owns those declarations,
+     * so the import is left recorded but this source stays node-less and the build
+     * walks straight past it. */
+    for_darr(i, in_flight, parser->parsing_stack){
+        if (strcmp(in_flight, absolute_path) == 0){
+            yap_log("Import cycle on '%s' – already being parsed, not re-entering", absolute_path);
+            return;
+        }
+    }
+
     yap_ctx_push_source(ctx, src);
 
     // If absolute_path has been parsed before, skip reparsing and reuse the cached source node
@@ -72,7 +86,9 @@ void yap_parse_file(yap_ctx* ctx, char* path, char* absolute_path, yap_loc impor
         yap_log("Reusing cached source node for '%s'", absolute_path);
         src->source_node = cached;
     } else {
+        darr_push(parser->parsing_stack, absolute_path);
         yap_parse_source(src);
+        darr_pop(parser->parsing_stack);
         yap_cache_source_node(parser, absolute_path, src->source_node);
     }
 
