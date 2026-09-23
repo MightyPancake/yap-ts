@@ -15,7 +15,7 @@ typedef struct {
  * like any other module. The sources with no fetcher yet are refused here rather than
  * silently resolving to something else of the same name. */
 static bool yap_dep_source_unsupported(yap_ctx* ctx, yap_dep_node dep){
-    const char* kind = dep.registry ? "registry" : (dep.path ? "path" : NULL);
+    const char* kind = dep.registry ? "registry" : NULL;
     if (!kind) return false;
 
     yap_ctx_push_error(ctx, (yap_error){
