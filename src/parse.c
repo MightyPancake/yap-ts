@@ -583,10 +583,20 @@ yap_decl_node yap_parse_module_import_decl(yap_source* src, TSNode node){
     if (!yap_parse_module(ctx, module_name.value, yap_ts_node_loc(node, src)))
         yap_push_parse_error(src, node, "Module '%s' not found in any lookup path", module_name.value);
 
+    yap_node_field_by_name_var(node, comptime_call_op);
+    bool parameterized = !ts_node_null_or_error(comptime_call_op_node);
+    darr(yap_macro_param_node) params = parameterized
+        ? yap_parse_macro_params_of(src, node)
+        : NULL;
+    if (parameterized)
+        yap_log("Parameterised import of '%s' with %d args", module_name.value, darr_len(params));
+
     return (yap_decl_node){
         .kind=yap_decl_module_import,
         .module_import={
             .module_name=module_name,
+            .parameterized=parameterized,
+            .params=params,
             .loc=yap_ts_node_loc(node, src),
         }
     };
@@ -2265,28 +2275,13 @@ yap_expr_node yap_parse_expr_index_access(yap_source* src, TSNode node){
     };
 }
 
-yap_macro_call_node yap_parse_macro_call(yap_source* src, TSNode node){
-    yap_ctx* ctx = (yap_ctx*)src->ctx;
-    yap_node_field_by_name_var(node, macro_call);
-    if (ts_node_null_or_error(macro_call_node)){
-        yap_push_parse_error(src, node, "Invalid comptime call");
-        return (yap_macro_call_node){ .loc=yap_ts_node_loc(node, src) };
-    }
-
-    yap_node_field_by_name_var(macro_call_node, caller);
-    if (ts_node_null_or_error(caller_node)){
-        yap_push_parse_error(src, node, "Missing caller in comptime call");
-        return (yap_macro_call_node){ .loc=yap_ts_node_loc(node, src) };
-    }
-
-    TSNode caller_inner = yap_parse_first_child(caller_node);
-    if (ts_node_null_or_error(caller_inner))
-        caller_inner = caller_node;
-    yap_expr_node* caller_expr = yap_ctx_one_cpy(ctx, yap_parse_expr(src, caller_inner));
-
+/* Shared by a comptime call and a parameterised import: both spell their arguments the
+ * same way, so both read them the same way. */
+darr(yap_macro_param_node) yap_parse_macro_params_of(yap_source* src, TSNode owner){
+    yap_ctx* ctx = src->ctx;
     darr(yap_macro_param_node) params = yap_ctx_darr_new(ctx, yap_macro_param_node, .cap=0, .len=0);
 
-    yap_node_field_by_name_var(macro_call_node, params);
+    yap_node_field_by_name_var(owner, params);
     if (!ts_node_null_or_error(params_node)){
         uint32_t count = ts_node_named_child_count(params_node);
         params = yap_ctx_darr_new(ctx, yap_macro_param_node, .cap=count, .len=0);
@@ -2352,6 +2347,30 @@ yap_macro_call_node yap_parse_macro_call(yap_source* src, TSNode node){
             }
         }
     }
+
+    return params;
+}
+
+yap_macro_call_node yap_parse_macro_call(yap_source* src, TSNode node){
+    yap_ctx* ctx = (yap_ctx*)src->ctx;
+    yap_node_field_by_name_var(node, macro_call);
+    if (ts_node_null_or_error(macro_call_node)){
+        yap_push_parse_error(src, node, "Invalid comptime call");
+        return (yap_macro_call_node){ .loc=yap_ts_node_loc(node, src) };
+    }
+
+    yap_node_field_by_name_var(macro_call_node, caller);
+    if (ts_node_null_or_error(caller_node)){
+        yap_push_parse_error(src, node, "Missing caller in comptime call");
+        return (yap_macro_call_node){ .loc=yap_ts_node_loc(node, src) };
+    }
+
+    TSNode caller_inner = yap_parse_first_child(caller_node);
+    if (ts_node_null_or_error(caller_inner))
+        caller_inner = caller_node;
+    yap_expr_node* caller_expr = yap_ctx_one_cpy(ctx, yap_parse_expr(src, caller_inner));
+
+    darr(yap_macro_param_node) params = yap_parse_macro_params_of(src, macro_call_node);
 
     return (yap_macro_call_node){
         .caller=caller_expr,

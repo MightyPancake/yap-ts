@@ -137,7 +137,12 @@ module.exports = grammar({
     //def module_import_declaration
     module_import_declaration: $ => seq(
       field("import", "import"),
-      field("name", $.identifier)
+      field("name", $.identifier),
+      optional(seq(
+        field("comptime_call_op", ":("),
+        field("params", optional($.macro_params)),
+        field("close_paren", ')')
+      ))
     ),
     //def file_import_declaration
     file_import_declaration: $ => seq(
