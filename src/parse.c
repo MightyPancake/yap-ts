@@ -89,8 +89,7 @@ yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
             .kind = yap_error_no_pos,
             .msg  = strus_newf("Source file '%s' not found", source_path)
         });
-        yap_free_parser(res->parser_ctx);
-        return res;
+            return res;
     }
     char* identity = yap_ctx_strus_cpy(ctx, resolved_path);
 
@@ -120,7 +119,6 @@ yap_ctx* yap_parse(yap_ctx* ctx, yap_args args){
 
     free(resolved_path);
     yap_parse_file(res, source_path, identity, (yap_loc){0});
-    yap_free_parser(res->parser_ctx);
     return res;
 }
 
