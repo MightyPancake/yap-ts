@@ -719,6 +719,73 @@ static darr(yap_dep_node) yap_parse_module_deps(yap_source* src, TSNode list_nod
     return deps;
 }
 
+static bool yap_parse_lib_object(yap_source* src, TSNode node, yap_lib_node* lib){
+    TSNode info = ts_node_named_child(node, 0);
+    if (ts_node_null_or_error(info)){
+        yap_push_parse_error(src, node, "Library entry is missing a name");
+        return false;
+    }
+
+    for_ts_named_children(info, item_node){
+        yap_node_field_by_name_var(item_node, key);
+        yap_node_field_by_name_var(item_node, value);
+        if (ts_node_null_or_error(key_node) || ts_node_null_or_error(value_node)) continue;
+        yap_identifier_node key_ident = yap_parse_identifier(src, key_node);
+        if (!key_ident.value) continue;
+
+        if (strus_eq(key_ident.value, "framework")){
+            if (!strus_eq(ts_node_type(value_node), "bool_literal")){
+                yap_push_parse_error(src, value_node, "Library 'framework' must be true or false");
+                return false;
+            }
+            lib->framework = strus_eq(yap_node_get_val_ctx(src, value_node), "true");
+            continue;
+        }
+
+        char** slot = NULL;
+        if      (strus_eq(key_ident.value, "name"))   slot = &lib->name;
+        else if (strus_eq(key_ident.value, "target")) slot = &lib->target;
+        else {
+            yap_push_parse_error(src, key_node, "Unknown key '%s' in library entry", key_ident.value);
+            return false;
+        }
+        *slot = yap_module_info_string(src, value_node, key_ident.value);
+        if (!*slot) return false;
+    }
+
+    if (!lib->name){
+        yap_push_parse_error(src, node, "Library entry is missing a name");
+        return false;
+    }
+    return true;
+}
+
+/* A bare string is a library name, exactly as a bare dep string is a module name. */
+static darr(yap_lib_node) yap_parse_module_libs(yap_source* src, TSNode list_node){
+    yap_ctx* ctx = src->ctx;
+    if (!strus_eq(ts_node_type(list_node), "module_info_list")){
+        yap_push_parse_error(src, list_node, "Module info 'libs' must be a list");
+        return NULL;
+    }
+
+    darr(yap_lib_node) libs = yap_ctx_darr_new(ctx, yap_lib_node,
+        .cap = ts_node_named_child_count(list_node) + 1, .len = 0);
+
+    for_ts_named_children(list_node, entry){
+        yap_lib_node lib = { .loc = yap_ts_node_loc(entry, src) };
+        bool ok;
+        if (strus_eq(ts_node_type(entry), "module_info_object")){
+            ok = yap_parse_lib_object(src, entry, &lib);
+        } else {
+            lib.name = yap_parse_string_literal(src, entry).string.value;
+            ok = lib.name && lib.name[0];
+            if (!ok) yap_push_parse_error(src, entry, "Empty library entry");
+        }
+        if (ok) darr_push(libs, lib);
+    }
+    return libs;
+}
+
 yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
     yap_decl_node res = {.kind=yap_decl_error};
     if (ts_node_null_or_error(node)){
@@ -740,6 +807,7 @@ yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
     char* prefix = NULL;
     char* version = NULL;
     darr(yap_dep_node) deps = NULL;
+    darr(yap_lib_node) libs = NULL;
     yap_node_field_by_name_var(node, module_info);
     if (!ts_node_null_or_error(module_info_node)){
         for_ts_named_children(module_info_node, item_node){
@@ -752,6 +820,7 @@ yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
             if      (strus_eq(key_ident.value, "prefix"))  prefix  = yap_module_info_string(src, value_node, "prefix");
             else if (strus_eq(key_ident.value, "version")) version = yap_module_info_string(src, value_node, "version");
             else if (strus_eq(key_ident.value, "deps"))    deps    = yap_parse_module_deps(src, value_node);
+            else if (strus_eq(key_ident.value, "libs"))    libs    = yap_parse_module_libs(src, value_node);
             /* Descriptive keys are part of the schema but nothing reads them. */
             else if (strus_eq(key_ident.value, "author")
                   || strus_eq(key_ident.value, "webpage")
@@ -772,6 +841,7 @@ yap_decl_node yap_parse_module_decl(yap_source* src, TSNode node){
             .prefix=prefix,
             .version=version,
             .deps=deps,
+            .libs=libs,
             .loc=yap_ts_node_loc(node, src),
         }
     };
