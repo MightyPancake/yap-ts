@@ -39,7 +39,7 @@ const fielded = ($, ruleName) => {
 
 const PREC = {
   ASSIGN: 0,            // =, +=, -=, *=, /=, %=, ?=
-  TERNARY: 1,           // cond ? val_if_true : val_if_false
+  TERNARY: 1,           // cond ? val_if_true else val_if_false
   EXPR_STATEMENT: 1,    // expr being a statement
   VAR_DECL: 2,          // typ name = expr
   COALESCE: 3,          // ??
@@ -424,7 +424,6 @@ module.exports = grammar({
       field("condition", $._expr),
       field("if", "?"),
       field("then_expr", $._expr),
-      // field("else", ":"),
       field("else", "else"),
       field("else_expr", $._expr)
     )),
