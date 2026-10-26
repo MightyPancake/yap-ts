@@ -325,11 +325,11 @@ module.exports = grammar({
     func_type_params: $ => comma_sep($.typ),
     macro_type: $ => $._macro_call,
     //def block
-    block: $ => seq(
+    block: $ => prec(1, seq( // beats blob_literal on `{}` in statement position
       field("opening_bracket", '{'),
       repeat($._statement),
       field("closing_bracket", '}'),
-    ),
+    )),
     //def _statement
     //def statement
     statement: $ => $._statement,
@@ -620,7 +620,7 @@ module.exports = grammar({
     //def index_access
     index_access: $ => prec.left(PREC.FIELD, seq(
       field("expr", $._expr),
-      field("open_bracket", ':['),
+      field("open_bracket", '['),
       field("index", $._expr),
       field("close_bracket", ']'),
     )),
@@ -694,9 +694,9 @@ module.exports = grammar({
     ),
     //def blob_literal
     blob_literal: $ => seq(
-      '[',
+      '{',
       optional(comma_sep($._param)), //TODO: Rework
-      ']'
+      '}'
     ),
     //def num_literal
     num_literal: $ => choice(
@@ -751,7 +751,7 @@ module.exports = grammar({
       $.named_param,
       $.unnamed_param,
       $.ast_param,
-      $._statement,
+      $._macro_param_statement,
       $.identifier_adding_param,
       $.macro_mut_param,
       // array_type/slice_type/function_type/const_type: compound type spellings with no _expr equivalent, added so e.g. `arr->arr:(i32[4])` parses.
@@ -762,6 +762,25 @@ module.exports = grammar({
       // pointer_type overlaps at_op for bare scalars (`i32@`) but is needed for pointer-of-compound (`i32[4]@`); both paths resolve to the same yap_type_id.
       $.pointer_type,
     ),
+    // _statement, but an empty `{}` arg is a blob here, not a block (unlike in statement position).
+    _macro_param_statement: $ => choice(
+      alias($._macro_param_block, $.block),
+      $._var_decl_statement,
+      $.expr_statement,
+      $.if_statement,
+      $.if_else_statement,
+      $.empty_statement,
+      $.while_loop,
+      $.for_loop,
+      $.return_statement,
+      $.break_statement,
+      $.continue_statement
+    ),
+    _macro_param_block: $ => prec(-1, seq(
+      field("opening_bracket", '{'),
+      repeat($._statement),
+      field("closing_bracket", '}'),
+    )),
     //def ast_param
     ast_param: $ => seq(
       field("ast_op", "#"),
