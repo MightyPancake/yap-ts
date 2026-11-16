@@ -131,7 +131,7 @@ module.exports = grammar({
       $.module_info_object,
     ),
     //def module_info_list
-    module_info_list: $ => seq('[', optional(comma_sep($._module_info_value)), ']'),
+    module_info_list: $ => prec(1, seq('{', optional(comma_sep($._module_info_value)), '}')),
     //def module_info_object
     module_info_object: $ => seq('{', optional($.module_info), '}'),
     //def module_import_declaration
