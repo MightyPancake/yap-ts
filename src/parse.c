@@ -316,6 +316,28 @@ yap_decl_node yap_parse_decl(yap_source* src, TSNode node){
         res = yap_parse_file_import_decl(src, node);
     }strus_case(typ, "module_declaration"){
         res = yap_parse_module_decl(src, node);
+    }strus_case(typ, "var_decl"){
+        res.kind = yap_decl_global_var;
+        res.global_var = (yap_global_var_node){ .var_decl = yap_parse_var_decl(src, node), .is_bind = false };
+    }strus_case(typ, "bind_var_declaration"){
+        yap_node_field_by_name_var(node, type);
+        yap_node_field_by_name_var(node, name);
+        if (ts_node_null_or_error(type_node) || ts_node_null_or_error(name_node)){
+            yap_push_parse_error(src, node, "Missing type or name in bind declaration");
+            res.err = yap_node_error(src, node, "Missing type or name in bind declaration");
+        } else {
+            yap_type_node tn = yap_parse_type_node(src, type_node);
+            res.kind = yap_decl_global_var;
+            res.global_var = (yap_global_var_node){
+                .var_decl = {
+                    .name = yap_parse_identifier(src, name_node),
+                    .has_type = true,
+                    .type_node = yap_ctx_one_cpy(src->ctx, tn),
+                    .loc = yap_ts_node_loc(node, src),
+                },
+                .is_bind = true,
+            };
+        }
     }strus_case(typ, "macro_declaration"){
         yap_log_node(src, node, "Parsing macro declaration");
         res.kind = yap_decl_macro;

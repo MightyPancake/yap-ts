@@ -104,6 +104,7 @@ module.exports = grammar({
       $.function_declaration,
       $.function_definition,
       $.type_declaration,
+      $.bind_var_declaration,
       $._statement, //Emits into current module.
     ),
     //def module_declaration
@@ -158,6 +159,13 @@ module.exports = grammar({
         $.union_declaration,
         $.forward_type_declaration,
       )
+    ),
+    //def bind_var_declaration
+    bind_var_declaration: $ => seq(
+      field("bind", "bind"),
+      field("type", $.typ),
+      field("name", $.identifier),
+      field("semicolon", ";"),
     ),
     forward_type_declaration: $ => seq(
       field("type", "type"),
