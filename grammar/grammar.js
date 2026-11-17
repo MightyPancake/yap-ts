@@ -583,7 +583,13 @@ module.exports = grammar({
       $.fn_blueprint, //function blueprint: (RET fn$ params){body} -> yFnT (eager)
       $.blueprint_hole, //$name placeholder; only meaningful inside a blueprint, rejected elsewhere in build.c
       $.macro_expr,
+      $.resolved_ref, //#name / #mod->name: a yExpr naming that symbol, resolved where it is written
     ),
+    //def resolved_ref
+    resolved_ref: $ => prec(-1, seq(
+      field("ref_op", "#"),
+      field("ref", choice($.identifier, $.module_access)),
+    )),
     //def macro_expr
     macro_expr: $ => $._macro_call,
     //def  block_expr

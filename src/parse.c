@@ -2437,6 +2437,17 @@ yap_expr_node yap_parse_expr(yap_source* src, TSNode node){
         return yap_parse_fn_blueprint(src, node);
     }strus_case(typ, "blueprint_hole"){
         return yap_parse_expr_blueprint_hole(src, node);
+    }strus_case(typ, "resolved_ref"){
+        yap_node_field_by_name_var(node, ref);
+        if (ts_node_null_or_error(ref_node)){
+            yap_push_parse_error(src, node, "Missing name after '#'");
+            return (yap_expr_node){ .kind=yap_expr_error, .err=yap_node_error(src, node, "Missing name after '#'"), .loc=yap_ts_node_loc(node, src) };
+        }
+        return (yap_expr_node){
+            .kind=yap_expr_resolved_ref,
+            .paren={ .expr=yap_ctx_one_cpy(src->ctx, yap_parse_expr(src, ref_node)), .loc=yap_ts_node_loc(node, src) },
+            .loc=yap_ts_node_loc(node, src)
+        };
     }strus_case(typ, "paren_expr"){
         return yap_parse_expr_paren(src, node);
     }strus_case(typ, "incr_expr"){
